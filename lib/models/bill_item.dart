@@ -1,14 +1,17 @@
+import 'bill_split.dart';
+
 class BillItem {
   final String id;
-  final String type; // 'expense' | 'income'
+  final String type;
   final double amount;
   final String category;
   final String note;
-  final String date;      // yyyy-MM-dd HH:mm:ss 账单发生时间
-  final String sortAt;    // yyyy-MM-dd HH:mm:ss 列表排序时间
-  final int iconId;       // 对应 iconJson 中的 id
-  final String createdAt; // yyyy-MM-dd HH:mm:ss 记录创建时间
-  final String updatedAt; // yyyy-MM-dd HH:mm:ss 记录最后更新时间
+  final String date;
+  final String sortAt;
+  final int iconId;
+  final String createdAt;
+  final String updatedAt;
+  final List<BillSplit> splits;
 
   const BillItem({
     required this.id,
@@ -21,6 +24,7 @@ class BillItem {
     required this.iconId,
     required this.createdAt,
     required this.updatedAt,
+    this.splits = const [],
   });
 
   Map<String, dynamic> toMap() {
@@ -47,7 +51,7 @@ class BillItem {
       note: map['note'] as String,
       date: map['date'] as String,
       sortAt: (map['sort_at'] as String?) ?? (map['date'] as String),
-      iconId: map['icon_id'] as int,
+      iconId: (map['icon_id'] as num).toInt(),
       createdAt: map['created_at'] as String,
       updatedAt: map['updated_at'] as String,
     );
@@ -64,6 +68,7 @@ class BillItem {
     int? iconId,
     String? createdAt,
     String? updatedAt,
+    List<BillSplit>? splits,
   }) {
     return BillItem(
       id: id ?? this.id,
@@ -76,6 +81,9 @@ class BillItem {
       iconId: iconId ?? this.iconId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      splits: splits ?? this.splits,
     );
   }
+
+  bool get hasMultipleCategories => splits.length > 1;
 }

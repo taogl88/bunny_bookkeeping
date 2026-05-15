@@ -1,14 +1,18 @@
 import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../data/account_data.dart';
 import '../models/bill_item.dart';
+import '../models/bill_split.dart';
 import '../models/category_entry.dart';
 import '../providers/bill_provider.dart';
 import '../providers/category_provider.dart';
 import '../providers/keyboard_provider.dart';
 import '../providers/navigation_provider.dart';
 import '../theme/app_theme.dart';
+import '../utils/format.dart';
 import '../utils/icon_helper.dart';
 import 'category_settings_page.dart';
 
@@ -23,6 +27,10 @@ class _BillingPageState extends ConsumerState<BillingPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   int? _selectedIconId;
+  final Set<int> _selectedExpenseIconIds = <int>{};
+  double? _expenseDraftAmount;
+  String _expenseDraftNote = '';
+  DateTime _expenseDraftDate = DateTime.now();
   int _lastTabIndex = 0;
   bool _suppressTabSync = false;
 
@@ -40,23 +48,40 @@ class _BillingPageState extends ConsumerState<BillingPage>
     super.dispose();
   }
 
-  String get _currentType => _tabController.index == 0 ? 'expense' : 'income';
+  bool get _isExpenseMode => _tabController.index == 0;
 
-  List<CategoryEntry> _categoriesForCurrentTab() {
-    final all = ref.read(categoryListProvider).value ?? const <CategoryEntry>[];
-    final inEx = _tabController.index == 0 ? 0 : 1;
-    return [
-      for (final c in all)
-        if (c.inEx == inEx) c,
-    ];
+  List<CategoryEntry> _expenseCategoriesFromIds(Set<int> ids) {
+    final all = ref.read(expenseCategoriesProvider);
+    return [for (final cat in all) if (ids.contains(cat.iconId)) cat];
   }
 
   void _handleTabChange() {
     if (_suppressTabSync || _tabController.index == _lastTabIndex) return;
     _lastTabIndex = _tabController.index;
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _selectDefaultCategoryForCurrentTab();
+      if (mounted) _resetLocalDraft();
+    });
+  }
+
+  void _resetLocalDraft() {
+    ref.read(keyboardProvider.notifier).hide();
+    setState(() {
+      _selectedIconId = null;
+      _selectedExpenseIconIds.clear();
+      _expenseDraftAmount = null;
+      _expenseDraftNote = '';
+      _expenseDraftDate = DateTime.now();
+    });
+  }
+
+  void _resetState() {
+    ref.read(editingBillProvider.notifier).clear();
+    _resetLocalDraft();
+    setState(() {
+      _suppressTabSync = true;
+      _tabController.index = 0;
+      _lastTabIndex = 0;
+      _suppressTabSync = false;
     });
   }
 
@@ -69,112 +94,275 @@ class _BillingPageState extends ConsumerState<BillingPage>
     );
   }
 
-  void _resetState() {
-    ref.read(keyboardProvider.notifier).hide();
-    ref.read(editingBillProvider.notifier).clear();
-    setState(() {
-      _selectedIconId = null;
-      _suppressTabSync = true;
-      _tabController.index = 0;
-      _lastTabIndex = 0;
-      _suppressTabSync = false;
-    });
-  }
-
-  void _selectDefaultCategoryForCurrentTab() {
-    final categories = _categoriesForCurrentTab();
-    if (categories.isEmpty) {
-      setState(() => _selectedIconId = null);
+  void _onCategoryTap(CategoryEntry cat) {
+    if (_isExpenseMode) {
+      _toggleExpenseCategory(cat);
       return;
     }
-    _selectCategory(categories.first, showKeyboardWhenHidden: false);
+    _openIncomeKeyboard(cat);
   }
 
-  void _onCategoryTap(CategoryEntry cat) {
-    _selectCategory(cat, showKeyboardWhenHidden: true);
+  void _toggleExpenseCategory(CategoryEntry cat) {
+    final next = <int>{..._selectedExpenseIconIds};
+    if (next.contains(cat.iconId)) {
+      next.remove(cat.iconId);
+    } else {
+      next.add(cat.iconId);
+    }
+    setState(() {
+      _selectedExpenseIconIds
+        ..clear()
+        ..addAll(next);
+      _selectedIconId = next.isNotEmpty ? cat.iconId : null;
+    });
+    _syncExpenseKeyboard();
   }
 
-  void _selectCategory(
-    CategoryEntry cat, {
-    required bool showKeyboardWhenHidden,
-  }) {
+  void _syncExpenseKeyboard() {
+    final categories = _expenseCategoriesFromIds(_selectedExpenseIconIds);
+    if (categories.isEmpty) {
+      ref.read(keyboardProvider.notifier).hide();
+      return;
+    }
+
     final editing = ref.read(editingBillProvider);
-    final icon = iconJson[cat.iconId];
-    setState(() => _selectedIconId = cat.iconId);
-    final onComplete = editing != null
-        ? (double amount, String note, DateTime date) =>
-              _updateBill(editing, cat, amount, note, date)
-        : (double amount, String note, DateTime date) =>
-              _saveBill(cat, amount, note, date);
+    final label = _expenseSummaryLabel(categories);
+    final icon = iconJson[categories.first.iconId];
+    final callback = (double amount, String note, DateTime date) {
+      setState(() {
+        _expenseDraftAmount = amount;
+        _expenseDraftNote = note;
+        _expenseDraftDate = date;
+      });
+      if (editing != null) {
+        _updateExpenseBill(editing, amount, note, date, categories);
+      } else {
+        _saveExpenseBill(amount, note, date, categories);
+      }
+    };
 
     final kb = ref.read(keyboardProvider);
     if (kb.visible) {
-      // 键盘已打开，只切换分类，保留金额/备注/日期
-      ref
-          .read(keyboardProvider.notifier)
-          .updateCategory(
-            categoryName: cat.name,
+      ref.read(keyboardProvider.notifier).updateCategory(
+            categoryName: label,
             categoryIconPath: iconPath(icon.iconS),
-            onComplete: onComplete,
+            onComplete: callback,
           );
-    } else {
-      if (!showKeyboardWhenHidden) return;
-      ref
-          .read(keyboardProvider.notifier)
-          .show(
-            categoryName: cat.name,
-            categoryIconPath: iconPath(icon.iconS),
-            initialAmount: editing?.amount,
-            initialNote: editing?.note,
-            initialDate: editing != null ? _billDateToDateTime(editing) : null,
-            onComplete: onComplete,
-          );
+      return;
     }
+
+    ref.read(keyboardProvider.notifier).show(
+          categoryName: label,
+          categoryIconPath: iconPath(icon.iconS),
+          initialAmount: editing != null
+              ? _editingSharedAmount(editing)
+              : _expenseDraftAmount,
+          initialNote: editing?.note ?? (_expenseDraftNote.isEmpty ? null : _expenseDraftNote),
+          initialDate: editing != null ? _billDateToDateTime(editing) : _expenseDraftDate,
+          onComplete: callback,
+        );
   }
 
-  void _openEditKeyboard(BillItem editing) {
-    final isIncome = editing.type == 'income';
+  double _editingSharedAmount(BillItem editing) {
+    if (editing.splits.isNotEmpty) {
+      return editing.splits.first.amount;
+    }
+    return editing.amount;
+  }
+
+  void _openIncomeKeyboard(CategoryEntry cat) {
+    final editing = ref.read(editingBillProvider);
+    final icon = iconJson[cat.iconId];
+    setState(() => _selectedIconId = cat.iconId);
+    ref.read(keyboardProvider.notifier).show(
+          categoryName: cat.name,
+          categoryIconPath: iconPath(icon.iconS),
+          initialAmount: editing?.amount,
+          initialNote: editing?.note,
+          initialDate: editing != null ? _billDateToDateTime(editing) : null,
+          onComplete: (amount, note, date) {
+            if (editing != null) {
+              _updateSingleCategoryBill(editing, cat, amount, note, date);
+            } else {
+              _saveSingleCategoryBill(cat, amount, note, date, type: 'income');
+            }
+          },
+        );
+  }
+
+  void _openEditFlow(BillItem bill) {
+    final isIncome = bill.type == 'income';
     _suppressTabSync = true;
     _tabController.index = isIncome ? 1 : 0;
     _lastTabIndex = _tabController.index;
     _suppressTabSync = false;
-    setState(() => _selectedIconId = editing.iconId);
 
-    final all = ref.read(categoryListProvider).value ?? const [];
-    final inEx = isIncome ? 1 : 0;
-    final cat = all.firstWhere(
-      (c) => c.inEx == inEx && c.iconId == editing.iconId,
-      orElse: () => all.firstWhere(
-        (c) => c.inEx == inEx,
+    if (isIncome) {
+      final categories = ref.read(incomeCategoriesProvider);
+      final cat = categories.firstWhere(
+        (item) => item.iconId == bill.iconId,
         orElse: () => CategoryEntry(
           id: -1,
-          inEx: inEx,
-          name: editing.category,
-          iconId: editing.iconId,
+          inEx: 1,
+          name: bill.category,
+          iconId: bill.iconId,
           isCustom: false,
           sortOrder: 0,
           createdAt: '',
           updatedAt: '',
         ),
-      ),
-    );
-    final icon = iconJson[cat.iconId];
-    final editDate = _billDateToDateTime(editing);
+      );
+      _openIncomeKeyboard(cat);
+      return;
+    }
 
-    ref
-        .read(keyboardProvider.notifier)
-        .show(
-          categoryName: cat.name,
-          categoryIconPath: iconPath(icon.iconS),
-          initialAmount: editing.amount,
-          initialNote: editing.note,
-          initialDate: editDate,
-          onComplete: (amount, note, date) =>
-              _updateBill(editing, cat, amount, note, date),
+    setState(() {
+      _selectedExpenseIconIds
+        ..clear()
+        ..addAll(
+          bill.splits.isNotEmpty
+              ? [for (final split in bill.splits) split.iconId]
+              : [bill.iconId],
         );
+      _selectedIconId = _selectedExpenseIconIds.isEmpty
+          ? bill.iconId
+          : _selectedExpenseIconIds.first;
+      _expenseDraftAmount = _editingSharedAmount(bill);
+      _expenseDraftNote = bill.note;
+      _expenseDraftDate = _billDateToDateTime(bill);
+    });
+    _syncExpenseKeyboard();
   }
 
-  void _saveBill(CategoryEntry cat, double amount, String note, DateTime date) {
+  List<BillSplitDraft> _buildSameAmountExpenseSplits(
+    double amount,
+    List<CategoryEntry> categories,
+  ) {
+    return [
+      for (final category in categories)
+        BillSplitDraft(
+          category: category.name,
+          iconId: category.iconId,
+          amount: amount,
+        ),
+    ];
+  }
+
+  String _expenseSummaryLabel(List<CategoryEntry> categories) {
+    if (categories.length == 1) return categories.first.name;
+    return '${categories.first.name}等${categories.length}类';
+  }
+
+  void _saveExpenseBill(
+    double amount,
+    String note,
+    DateTime date,
+    List<CategoryEntry> categories,
+  ) {
+    final payload = _buildBillPayload(date);
+    final primary = categories.first;
+    final bill = BillItem(
+      id: payload.id,
+      type: 'expense',
+      amount: amount,
+      category: _expenseSummaryLabel(categories),
+      note: note,
+      date: payload.date,
+      sortAt: payload.sortAt,
+      iconId: primary.iconId,
+      createdAt: payload.createdAt,
+      updatedAt: payload.updatedAt,
+    );
+    ref.read(billListProvider.notifier).add(
+          bill,
+          splits: _buildSameAmountExpenseSplits(amount, categories),
+        );
+    _finishSave();
+  }
+
+  void _updateExpenseBill(
+    BillItem original,
+    double amount,
+    String note,
+    DateTime date,
+    List<CategoryEntry> categories,
+  ) {
+    final payload = _buildUpdatedBillPayload(original, date);
+    final primary = categories.first;
+    final updated = original.copyWith(
+      type: 'expense',
+      amount: amount,
+      category: _expenseSummaryLabel(categories),
+      note: note,
+      date: payload.date,
+      sortAt: payload.sortAt,
+      iconId: primary.iconId,
+      updatedAt: payload.updatedAt,
+    );
+    ref.read(billListProvider.notifier).updateBill(
+          updated,
+          splits: _buildSameAmountExpenseSplits(amount, categories),
+        );
+    _finishUpdate();
+  }
+
+  void _saveSingleCategoryBill(
+    CategoryEntry cat,
+    double amount,
+    String note,
+    DateTime date, {
+    required String type,
+  }) {
+    final payload = _buildBillPayload(date);
+    final bill = BillItem(
+      id: payload.id,
+      type: type,
+      amount: amount,
+      category: cat.name,
+      note: note,
+      date: payload.date,
+      sortAt: payload.sortAt,
+      iconId: cat.iconId,
+      createdAt: payload.createdAt,
+      updatedAt: payload.updatedAt,
+    );
+    ref.read(billListProvider.notifier).add(
+          bill,
+          splits: [
+            BillSplitDraft(category: cat.name, iconId: cat.iconId, amount: amount),
+          ],
+        );
+    _finishSave();
+  }
+
+  void _updateSingleCategoryBill(
+    BillItem original,
+    CategoryEntry cat,
+    double amount,
+    String note,
+    DateTime date,
+  ) {
+    final payload = _buildUpdatedBillPayload(original, date);
+    final updated = original.copyWith(
+      type: 'income',
+      amount: amount,
+      category: cat.name,
+      note: note,
+      date: payload.date,
+      sortAt: payload.sortAt,
+      iconId: cat.iconId,
+      updatedAt: payload.updatedAt,
+    );
+    ref.read(billListProvider.notifier).updateBill(
+          updated,
+          splits: [
+            BillSplitDraft(category: cat.name, iconId: cat.iconId, amount: amount),
+          ],
+        );
+    _finishUpdate();
+  }
+
+  _BillPayload _buildBillPayload(DateTime date) {
     final now = DateTime.now();
     final ts = now.millisecondsSinceEpoch;
     final rand = Random().nextInt(999999).toString().padLeft(6, '0');
@@ -185,32 +373,16 @@ class _BillingPageState extends ConsumerState<BillingPage>
     final nowStr =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} '
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
-
-    final bill = BillItem(
+    return _BillPayload(
       id: id,
-      type: _currentType,
-      amount: amount,
-      category: cat.name,
-      note: note,
       date: dateStr,
       sortAt: nowStr,
-      iconId: cat.iconId,
       createdAt: nowStr,
       updatedAt: nowStr,
     );
-
-    ref.read(billListProvider.notifier).add(bill);
-    ref.read(keyboardProvider.notifier).hide();
-    ref.read(navigationProvider.notifier).setTab(0);
   }
 
-  void _updateBill(
-    BillItem original,
-    CategoryEntry cat,
-    double amount,
-    String note,
-    DateTime date,
-  ) {
+  _BillPayload _buildUpdatedBillPayload(BillItem original, DateTime date) {
     final now = DateTime.now();
     final originalDay = original.date.substring(0, 10);
     final nextDay =
@@ -218,28 +390,30 @@ class _BillingPageState extends ConsumerState<BillingPage>
     final nowStr =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} '
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
-    final isSameBillDay = originalDay == nextDay;
-    final dateStr = isSameBillDay
+    final dateStr = originalDay == nextDay
         ? original.date
         : '$nextDay '
               '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
-    final nextSortAt = isSameBillDay ? original.sortAt : nowStr;
-
-    final updated = original.copyWith(
-      type: _currentType,
-      amount: amount,
-      category: cat.name,
-      note: note,
+    return _BillPayload(
+      id: original.id,
       date: dateStr,
-      sortAt: nextSortAt,
-      iconId: cat.iconId,
+      sortAt: originalDay == nextDay ? original.sortAt : nowStr,
+      createdAt: original.createdAt,
       updatedAt: nowStr,
     );
+  }
 
-    ref.read(billListProvider.notifier).updateBill(updated);
+  void _finishSave() {
+    ref.read(keyboardProvider.notifier).hide();
+    ref.read(navigationProvider.notifier).setTab(0);
+    _resetState();
+  }
+
+  void _finishUpdate() {
     ref.read(editingBillProvider.notifier).clear();
     ref.read(keyboardProvider.notifier).hide();
     ref.read(navigationProvider.notifier).setTab(0);
+    _resetState();
   }
 
   @override
@@ -247,7 +421,7 @@ class _BillingPageState extends ConsumerState<BillingPage>
     ref.listen<BillItem?>(editingBillProvider, (prev, next) {
       if (next != null && prev == null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _openEditKeyboard(next);
+          if (mounted) _openEditFlow(next);
         });
       }
     });
@@ -265,6 +439,7 @@ class _BillingPageState extends ConsumerState<BillingPage>
       body: Column(
         children: [
           _buildTabBar(),
+          if (_isExpenseMode) _buildExpenseHint(),
           Expanded(
             child: TabBarView(
               controller: _tabController,
@@ -282,7 +457,7 @@ class _BillingPageState extends ConsumerState<BillingPage>
       alignment: Alignment.bottomCenter,
       padding: EdgeInsets.only(top: topPadding),
       height: 48 + topPadding,
-      decoration: BoxDecoration(color: AppColors.primary),
+      decoration: const BoxDecoration(color: AppColors.primary),
       child: Row(
         children: [
           const SizedBox(width: 40),
@@ -293,14 +468,9 @@ class _BillingPageState extends ConsumerState<BillingPage>
               controller: _tabController,
               labelColor: Colors.black,
               unselectedLabelColor: AppColors.textSecondary,
-              labelStyle: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
-              unselectedLabelStyle: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
+              labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+              unselectedLabelStyle:
+                  const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
               indicatorColor: Colors.black,
               indicatorSize: TabBarIndicatorSize.label,
               dividerHeight: 0,
@@ -316,6 +486,7 @@ class _BillingPageState extends ConsumerState<BillingPage>
               ref.read(editingBillProvider.notifier).clear();
               ref.read(keyboardProvider.notifier).hide();
               ref.read(navigationProvider.notifier).setTab(0);
+              _resetState();
             },
             child: Text(
               '取消',
@@ -328,14 +499,73 @@ class _BillingPageState extends ConsumerState<BillingPage>
     );
   }
 
+  Widget _buildExpenseHint() {
+    final selectedCategories = _expenseCategoriesFromIds(_selectedExpenseIconIds);
+    return Container(
+      width: double.infinity,
+      color: AppColors.primaryLight,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            selectedCategories.isEmpty
+                ? '支持多标签'
+                : '已选 ${selectedCategories.length} 个标签',
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (selectedCategories.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final category in selectedCategories)
+                  InputChip(
+                    label: Text(category.name),
+                    selected: _selectedIconId == category.iconId,
+                    onPressed: () {
+                      setState(() => _selectedIconId = category.iconId);
+                    },
+                    onDeleted: () {
+                      setState(() {
+                        _selectedExpenseIconIds.remove(category.iconId);
+                        _selectedIconId = _selectedExpenseIconIds.isNotEmpty
+                            ? _selectedExpenseIconIds.first
+                            : null;
+                      });
+                      _syncExpenseKeyboard();
+                    },
+                  ),
+              ],
+            ),
+            if (_expenseDraftAmount != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                '当前金额 ${formatAmount(_expenseDraftAmount!)}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildGrid(List<CategoryEntry> categories) {
     final kb = ref.watch(keyboardProvider);
-    // BottomAppBar 高度 64 + notch margin
     const tabBarHeight = 64.0;
     final bottomPad = kb.visible && kb.height > 0
         ? (kb.height - tabBarHeight).clamp(0.0, double.infinity)
         : 16.0;
-    // 末尾追加一个「设置」格子，用于进入「类别设置」页
     final itemCount = categories.length + 1;
     return GridView.builder(
       padding: EdgeInsets.only(left: 24, right: 24, top: 16, bottom: bottomPad),
@@ -349,7 +579,9 @@ class _BillingPageState extends ConsumerState<BillingPage>
           return _SettingsCell(onTap: _openCategorySettings);
         }
         final cat = categories[index];
-        final isSelected = _selectedIconId == cat.iconId;
+        final isSelected = _isExpenseMode
+            ? _selectedExpenseIconIds.contains(cat.iconId)
+            : _selectedIconId == cat.iconId;
         final icon = iconJson[cat.iconId];
         final imgPath = isSelected ? iconPath(icon.iconS) : iconPath(icon.icon);
         return GestureDetector(
@@ -358,10 +590,15 @@ class _BillingPageState extends ConsumerState<BillingPage>
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.transparent,
+                  color: isSelected ? AppColors.primaryLight : Colors.transparent,
+                  border: Border.all(
+                    color: isSelected ? AppColors.primary : Colors.transparent,
+                    width: 1.4,
+                  ),
                 ),
+                padding: const EdgeInsets.all(4),
                 child: Center(
                   child: Image.asset(imgPath, width: 50, height: 50),
                 ),
@@ -369,10 +606,7 @@ class _BillingPageState extends ConsumerState<BillingPage>
               const SizedBox(height: 4),
               Text(
                 cat.name,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
                 overflow: TextOverflow.ellipsis,
               ),
             ],
@@ -383,9 +617,8 @@ class _BillingPageState extends ConsumerState<BillingPage>
   }
 
   void _openCategorySettings() {
-    // 进入设置前先收起键盘，避免覆盖
     ref.read(keyboardProvider.notifier).hide();
-    final initialInEx = _tabController.index; // 0 = expense, 1 = income
+    final initialInEx = _tabController.index;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => CategorySettingsPage(initialInEx: initialInEx),
@@ -394,7 +627,6 @@ class _BillingPageState extends ConsumerState<BillingPage>
   }
 }
 
-/// 「设置」格子：与其他类别一致的占位 + 一个齿轮图标
 class _SettingsCell extends StatelessWidget {
   const _SettingsCell({required this.onTap});
 
@@ -411,9 +643,9 @@ class _SettingsCell extends StatelessWidget {
           Container(
             width: 50,
             height: 50,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              color: const Color(0xFFF4F4F4),
+              color: Color(0xFFF4F4F4),
             ),
             alignment: Alignment.center,
             child: const Icon(
@@ -432,4 +664,20 @@ class _SettingsCell extends StatelessWidget {
       ),
     );
   }
+}
+
+class _BillPayload {
+  final String id;
+  final String date;
+  final String sortAt;
+  final String createdAt;
+  final String updatedAt;
+
+  const _BillPayload({
+    required this.id,
+    required this.date,
+    required this.sortAt,
+    required this.createdAt,
+    required this.updatedAt,
+  });
 }

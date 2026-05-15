@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'bill_statement_page.dart';
-import 'budget_manager_page.dart';
+import '../providers/asset_provider.dart';
 import '../providers/bill_provider.dart';
 import '../providers/budget_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/format.dart';
+import 'asset_page.dart';
+import 'bill_statement_page.dart';
+import 'budget_manager_page.dart';
 
 class DiscoverPage extends ConsumerWidget {
   const DiscoverPage({super.key});
@@ -15,6 +17,7 @@ class DiscoverPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final bottomInset = MediaQuery.of(context).padding.bottom;
     final month = ref.watch(selectedMonthProvider);
+    final assetDashboardAsync = ref.watch(assetDashboardProvider);
     final summaryAsync = ref.watch(monthlySummaryProvider);
     final monthlyBudgetAsync = ref.watch(monthlyTotalBudgetProvider);
     final monthLabel = month.substring(5);
@@ -22,6 +25,12 @@ class DiscoverPage extends ConsumerWidget {
     final income = summaryAsync.value?.income ?? 0;
     final expense = summaryAsync.value?.expense ?? 0;
     final balance = income - expense;
+    final assetTotal = assetDashboardAsync.value?.selectedMonthDetails.fold<double>(
+          0,
+          (sum, item) => sum + item.snapshot.balance,
+        ) ??
+        0;
+    final assetCount = assetDashboardAsync.value?.assets.length ?? 0;
 
     final monthlyBudget = monthlyBudgetAsync.value ?? 0;
     final remainingBudget = monthlyBudget - expense;
@@ -42,7 +51,15 @@ class DiscoverPage extends ConsumerWidget {
                   SizedBox(
                     height: topColorHeight,
                     width: double.infinity,
-                    child: const ColoredBox(color: AppColors.primary),
+                    child: const DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Color(0xFFE86F51), Color(0xFFF1A987)],
+                        ),
+                      ),
+                    ),
                   ),
                   const Expanded(
                     child: SizedBox(
@@ -54,20 +71,12 @@ class DiscoverPage extends ConsumerWidget {
               ),
               Column(
                 children: [
-                  _DiscoverHeader(),
+                  const _DiscoverHeader(),
                   Expanded(
-                    child: Container(
+                    child: SizedBox(
                       width: double.infinity,
-                      decoration: const BoxDecoration(
-                        color: Colors.transparent,
-                      ),
                       child: SingleChildScrollView(
-                        padding: EdgeInsets.fromLTRB(
-                          16,
-                          0,
-                          16,
-                          bottomInset + 92,
-                        ),
+                        padding: EdgeInsets.fromLTRB(16, 0, 16, bottomInset + 92),
                         child: Column(
                           children: [
                             _SectionCard(
@@ -88,9 +97,23 @@ class DiscoverPage extends ConsumerWidget {
                             ),
                             const SizedBox(height: 12),
                             _SectionCard(
-                              title: '${monthLabel}月总预算',
+                              title: '资产管家',
                               onTap: () {
-                                // 进入预算管家：默认展示月预算
+                                Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => const AssetPage(),
+                                  ),
+                                );
+                              },
+                              child: _AssetOverview(
+                                totalAssets: assetTotal,
+                                accountCount: assetCount,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            _SectionCard(
+                              title: '$monthLabel 月总预算',
+                              onTap: () {
                                 ref
                                     .read(budgetPeriodProvider.notifier)
                                     .set(BudgetPeriodType.month);
@@ -123,12 +146,14 @@ class DiscoverPage extends ConsumerWidget {
 }
 
 class _DiscoverHeader extends StatelessWidget {
+  const _DiscoverHeader();
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
       bottom: false,
       child: Padding(
-        padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
+        padding: const EdgeInsets.only(top: 8, bottom: 8),
         child: SizedBox(
           height: 48,
           child: Center(
@@ -156,10 +181,10 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final double borderRadius = 8;
+    const borderRadius = 20.0;
 
     return Material(
-      elevation: 0.5,
+      elevation: 0,
       color: AppColors.surface,
       borderRadius: BorderRadius.circular(borderRadius),
       child: InkWell(
@@ -170,6 +195,14 @@ class _SectionCard extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(borderRadius),
+            border: Border.all(color: AppColors.surfaceStrong),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x123A241B),
+                blurRadius: 18,
+                offset: Offset(0, 8),
+              ),
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -225,7 +258,7 @@ class _BillOverview extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Padding(
-                padding: const EdgeInsets.only(top: 8.0),
+                padding: const EdgeInsets.only(top: 8),
                 child: Text(
                   monthLabel,
                   style: const TextStyle(
@@ -254,18 +287,82 @@ class _BillOverview extends StatelessWidget {
         Expanded(
           child: Row(
             children: [
-              Expanded(
-                child: _MetricColumn(label: '收入', value: income),
-              ),
+              Expanded(child: _MetricColumn(label: '收入', value: income)),
               const SizedBox(width: 6),
-              Expanded(
-                child: _MetricColumn(label: '支出', value: expense),
-              ),
+              Expanded(child: _MetricColumn(label: '支出', value: expense)),
               const SizedBox(width: 6),
-              Expanded(
-                child: _MetricColumn(label: '结余', value: balance),
+              Expanded(child: _MetricColumn(label: '结余', value: balance)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AssetOverview extends StatelessWidget {
+  const _AssetOverview({
+    required this.totalAssets,
+    required this.accountCount,
+  });
+
+  final double totalAssets;
+  final int accountCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: AppColors.accentSoft,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          alignment: Alignment.center,
+          child: Image.asset(
+            'assets/images/资产管家.png',
+            width: 30,
+            height: 30,
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '当前总资产',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              buildAmountText(
+                value: totalAssets,
+                integerStyle: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                ),
+                decimalStyle: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textSecondary,
+                ),
               ),
             ],
+          ),
+        ),
+        Text(
+          '$accountCount 个账户',
+          style: const TextStyle(
+            fontSize: 12,
+            color: AppColors.textSecondary,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ],
@@ -422,10 +519,8 @@ class _BudgetRing extends StatelessWidget {
             child: CircularProgressIndicator(
               value: progress,
               strokeWidth: 9,
-              backgroundColor: AppColors.gray,
-              valueColor: const AlwaysStoppedAnimation<Color>(
-                AppColors.primary,
-              ),
+              backgroundColor: AppColors.surfaceStrong,
+              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accent),
             ),
           ),
           overflow

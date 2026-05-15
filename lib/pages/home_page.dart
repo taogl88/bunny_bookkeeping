@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../theme/app_theme.dart';
+
+import '../data/account_data.dart';
 import '../models/bill_item.dart';
 import '../providers/bill_provider.dart';
 import '../providers/budget_provider.dart';
+import '../providers/navigation_provider.dart';
+import '../theme/app_theme.dart';
 import '../utils/format.dart';
-import '../data/account_data.dart';
 import '../utils/icon_helper.dart';
 import '../widgets/month_picker.dart';
-import '../providers/navigation_provider.dart';
+import 'asset_page.dart';
 import 'bill_statement_page.dart';
 import 'bookkeeping_calendar_page.dart';
 import 'budget_manager_page.dart';
@@ -33,12 +35,21 @@ class _HomePageState extends ConsumerState<HomePage> {
     final year = month.substring(0, 4);
     final mon = month.substring(5);
 
-    return Column(
-      children: [
-        _buildHeader(context, ref, year, mon, summaryAsync),
-        _buildQuickActions(context, ref),
-        Expanded(child: _buildTransactionList(context, ref, billsAsync)),
-      ],
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFFFCE8DF), AppColors.scaffoldBg],
+        ),
+      ),
+      child: Column(
+        children: [
+          _buildHeader(context, ref, year, mon, summaryAsync),
+          _buildQuickActions(context, ref),
+          Expanded(child: _buildTransactionList(context, ref, billsAsync)),
+        ],
+      ),
     );
   }
 
@@ -53,23 +64,39 @@ class _HomePageState extends ConsumerState<HomePage> {
     final expense = summaryAsync.value?.expense ?? 0;
 
     return Container(
-      color: AppColors.primary,
+      margin: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFE86F51), Color(0xFFF19C7A)],
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x2AD1674A),
+            blurRadius: 26,
+            offset: Offset(0, 12),
+          ),
+        ],
+      ),
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
           child: Column(
             children: [
               SizedBox(
-                height: 32,
+                height: 24,
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
                     const Text(
                       'bunny记账',
                       style: TextStyle(
-                        fontSize: 20,
+                        fontSize: 16,
                         fontWeight: FontWeight.bold,
+                        color: Colors.white,
                       ),
                     ),
                     Align(
@@ -79,36 +106,36 @@ class _HomePageState extends ConsumerState<HomePage> {
                         children: [
                           IconButton(
                             onPressed: () => _openSearchPage(context),
-                            icon: const Icon(Icons.search, size: 22),
-                            padding: EdgeInsets.symmetric(horizontal: 6),
+                            icon: const Icon(Icons.search, size: 20),
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
                             constraints: const BoxConstraints(
                               minWidth: 0,
-                              minHeight: 32,
+                              minHeight: 24,
                             ),
                             visualDensity: VisualDensity.compact,
                             style: IconButton.styleFrom(
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
-                            color: AppColors.textPrimary,
+                            color: Colors.white,
                             tooltip: '搜索',
                           ),
-                          SizedBox(width: 4),
+                          const SizedBox(width: 2),
                           IconButton(
                             onPressed: () => _openCalendarPage(context),
                             icon: const Icon(
                               Icons.calendar_today_outlined,
-                              size: 21,
+                              size: 18,
                             ),
-                            padding: EdgeInsets.symmetric(horizontal: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
                             constraints: const BoxConstraints(
                               minWidth: 0,
-                              minHeight: 32,
+                              minHeight: 24,
                             ),
                             visualDensity: VisualDensity.compact,
                             style: IconButton.styleFrom(
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
-                            color: AppColors.textPrimary,
+                            color: Colors.white,
                             tooltip: '记账日历',
                           ),
                         ],
@@ -117,7 +144,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                   ],
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 16),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -131,9 +158,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                         ),
                       );
                       if (result != null) {
-                        ref
-                            .read(selectedMonthProvider.notifier)
-                            .setMonth(result);
+                        ref.read(selectedMonthProvider.notifier).setMonth(result);
                       }
                     },
                     child: Column(
@@ -141,30 +166,40 @@ class _HomePageState extends ConsumerState<HomePage> {
                       children: [
                         Text(
                           '$year年',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textPrimary,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.white70,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
                         Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
                               month,
                               style: const TextStyle(
-                                fontSize: 32,
+                                fontSize: 28,
                                 fontWeight: FontWeight.bold,
                                 height: 1.1,
+                                color: Colors.white,
                               ),
                             ),
-                            const Text(
-                              '月',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
+                            const Padding(
+                              padding: EdgeInsets.only(bottom: 2),
+                              child: Text(
+                                '月',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
-                            const Icon(Icons.arrow_drop_down, size: 20),
+                            const Icon(
+                              Icons.arrow_drop_down,
+                              size: 20,
+                              color: Colors.white,
+                            ),
                           ],
                         ),
                       ],
@@ -173,27 +208,28 @@ class _HomePageState extends ConsumerState<HomePage> {
                   const SizedBox(width: 8),
                   Container(
                     width: 1,
-                    height: 40,
-                    color: AppColors.textPrimary.withAlpha(60),
+                    height: 36,
+                    color: Colors.white24,
                   ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           '收入',
                           style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textPrimary,
+                            fontSize: 14,
+                            color: Colors.white70,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
                         Text(
                           income.toStringAsFixed(2),
                           style: const TextStyle(
-                            fontSize: 16,
+                            fontSize: 20,
                             fontWeight: FontWeight.bold,
+                            color: Colors.white,
                           ),
                         ),
                       ],
@@ -203,19 +239,20 @@ class _HomePageState extends ConsumerState<HomePage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           '支出',
                           style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textPrimary,
+                            fontSize: 14,
+                            color: Colors.white70,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
                         Text(
                           expense.toStringAsFixed(2),
                           style: const TextStyle(
-                            fontSize: 16,
+                            fontSize: 20,
                             fontWeight: FontWeight.bold,
+                            color: Colors.white,
                           ),
                         ),
                       ],
@@ -230,27 +267,33 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
+  String _weekdayLabel(DateTime date) {
+    const labels = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
+    return labels[date.weekday - 1];
+  }
+
+  String _formatDayWithWeekday(String day) {
+    final parts = day.split('-');
+    if (parts.length != 3) return day;
+    final date = DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+    return '${parts[0]}-${parts[1]}-${parts[2]} ${_weekdayLabel(date)}';
+  }
+
   Widget _buildQuickActions(BuildContext context, WidgetRef ref) {
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [AppColors.primary, Colors.white],
-          stops: [0.3, 0.8],
-        ),
-      ),
+      padding: const EdgeInsets.only(top: 14),
       child: Container(
-        margin: const EdgeInsets.only(left: 12, right: 12, top: 0, bottom: 12),
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        margin: const EdgeInsets.only(left: 14, right: 14, bottom: 14),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
         decoration: BoxDecoration(
           color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: AppColors.surfaceStrong),
+          boxShadow: const [
             BoxShadow(
-              color: AppColors.textPrimary.withAlpha((255 * 0.3).floor()),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
+              color: Color(0x143A241B),
+              blurRadius: 18,
+              offset: Offset(0, 10),
             ),
           ],
         ),
@@ -266,6 +309,11 @@ class _HomePageState extends ConsumerState<HomePage> {
               iconPath: 'assets/images/预算.png',
               label: '预算',
               onTap: () => _openBudgetManager(context, ref),
+            ),
+            _quickActionItem(
+              iconPath: 'assets/images/资产管家.png',
+              label: '资产',
+              onTap: () => _openAssetPage(context),
             ),
           ],
         ),
@@ -286,11 +334,24 @@ class _HomePageState extends ConsumerState<HomePage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Image.asset(iconPath, width: 24, height: 24),
-            const SizedBox(height: 4),
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: AppColors.primaryLight,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              alignment: Alignment.center,
+              child: Image.asset(iconPath, width: 24, height: 24),
+            ),
+            const SizedBox(height: 8),
             Text(
               label,
-              style: TextStyle(fontSize: 10, color: AppColors.textPrimary),
+              style: const TextStyle(
+                fontSize: 10,
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ],
         ),
@@ -305,11 +366,16 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   void _openBudgetManager(BuildContext context, WidgetRef ref) {
-    // 与发现页“xx月总预算”卡片保持一致：进入预算管家默认展示月预算
     ref.read(budgetPeriodProvider.notifier).set(BudgetPeriodType.month);
     Navigator.of(
       context,
     ).push(MaterialPageRoute<void>(builder: (_) => const BudgetManagerPage()));
+  }
+
+  void _openAssetPage(BuildContext context) {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const AssetPage()));
   }
 
   void _openSearchPage(BuildContext context) {
@@ -335,9 +401,13 @@ class _HomePageState extends ConsumerState<HomePage> {
       data: (bills) {
         if (bills.isEmpty) {
           return Container(
-            color: AppColors.surface,
-            // padding: const EdgeInsets.only(top: 10),
-            child: Center(
+            margin: const EdgeInsets.fromLTRB(14, 0, 14, 0),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: AppColors.surfaceStrong),
+            ),
+            child: const Center(
               child: Text(
                 '暂无账单',
                 style: TextStyle(color: AppColors.textSecondary),
@@ -357,7 +427,6 @@ class _HomePageState extends ConsumerState<HomePage> {
             return b.date.compareTo(a.date);
           });
 
-        // 按日期分组 (yyyy-MM-dd)
         final grouped = <String, List<BillItem>>{};
         for (final bill in sortedBills) {
           final day = bill.date.substring(0, 10);
@@ -367,8 +436,12 @@ class _HomePageState extends ConsumerState<HomePage> {
         final days = grouped.keys.toList();
 
         return Container(
-          color: AppColors.surface,
-          // padding: const EdgeInsets.only(top: 10),
+          margin: const EdgeInsets.fromLTRB(14, 0, 14, 0),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: AppColors.surfaceStrong),
+          ),
           child: ListView.builder(
             padding: EdgeInsets.zero,
             itemCount: days.length,
@@ -384,7 +457,6 @@ class _HomePageState extends ConsumerState<HomePage> {
 
               return Column(
                 children: [
-                  // 日期头
                   Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
@@ -394,9 +466,9 @@ class _HomePageState extends ConsumerState<HomePage> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          day,
-                          style: TextStyle(
-                            fontSize: 10,
+                          _formatDayWithWeekday(day),
+                          style: const TextStyle(
+                            fontSize: 14,
                             color: AppColors.textSecondary,
                             fontWeight: FontWeight.w500,
                           ),
@@ -406,8 +478,8 @@ class _HomePageState extends ConsumerState<HomePage> {
                             if (dayIncome > 0)
                               Text(
                                 '收入：${formatAmount(dayIncome)}  ',
-                                style: TextStyle(
-                                  fontSize: 10,
+                                style: const TextStyle(
+                                  fontSize: 14,
                                   color: AppColors.textSecondary,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -415,8 +487,8 @@ class _HomePageState extends ConsumerState<HomePage> {
                             if (dayExpense > 0)
                               Text(
                                 '支出：${formatAmount(dayExpense)}',
-                                style: TextStyle(
-                                  fontSize: 10,
+                                style: const TextStyle(
+                                  fontSize: 14,
                                   color: AppColors.textSecondary,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -426,12 +498,15 @@ class _HomePageState extends ConsumerState<HomePage> {
                       ],
                     ),
                   ),
-
-                  // 账单条目
                   ...items.map((bill) => _billTile(context, ref, bill)),
-                  SizedBox(height: 8),
+                  const SizedBox(height: 8),
                   if (index < days.length - 1)
-                    const Divider(height: 1, color: AppColors.darkGray),
+                    const Divider(
+                      height: 1,
+                      color: AppColors.darkGray,
+                      indent: 16,
+                      endIndent: 16,
+                    ),
                   if (index == days.length - 1) const SizedBox(height: 16),
                 ],
               );
@@ -447,8 +522,11 @@ class _HomePageState extends ConsumerState<HomePage> {
     final isMenuActive = _activeMenuBillId == bill.id;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onLongPressStart: (details) =>
-          _showBillMenu(context, ref, details.globalPosition, bill),
+      onTap: () {
+        ref.read(editingBillProvider.notifier).set(bill);
+        ref.read(navigationProvider.notifier).setTab(2);
+      },
+      onLongPress: () => _showBillActionsSheet(context, ref, bill),
       child: AnimatedContainer(
         duration: isMenuActive
             ? Duration.zero
@@ -458,8 +536,9 @@ class _HomePageState extends ConsumerState<HomePage> {
           color: isMenuActive
               ? AppColors.primaryLight
               : AppColors.primaryLight.withAlpha(0),
+          borderRadius: BorderRadius.circular(16),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
           children: [
             bill.iconId >= 0 && bill.iconId < iconJson.length
@@ -468,7 +547,11 @@ class _HomePageState extends ConsumerState<HomePage> {
                     width: 36,
                     height: 36,
                   )
-                : Icon(Icons.receipt, size: 36, color: AppColors.textSecondary),
+                : const Icon(
+                    Icons.receipt,
+                    size: 36,
+                    color: AppColors.textSecondary,
+                  ),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
@@ -495,6 +578,90 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
+  Future<void> _showBillMenuAtPosition(
+    BuildContext context,
+    WidgetRef ref,
+    BillItem bill,
+  ) async {
+    final RenderBox box = context.findRenderObject() as RenderBox;
+    final position = box.localToGlobal(Offset.zero) +
+        Offset(box.size.width / 2, box.size.height / 2);
+    await _showBillMenu(context, ref, position, bill);
+  }
+
+  Future<void> _showBillActionsSheet(
+    BuildContext context,
+    WidgetRef ref,
+    BillItem bill,
+  ) async {
+    setState(() => _activeMenuBillId = bill.id);
+    final value = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.darkGray,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              title: const Text('修改'),
+              onTap: () => Navigator.of(ctx).pop('edit'),
+            ),
+            ListTile(
+              title: const Text('删除', style: TextStyle(color: Colors.red)),
+              onTap: () => Navigator.of(ctx).pop('delete'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || !context.mounted) return;
+
+    if (_activeMenuBillId == bill.id) {
+      setState(() => _activeMenuBillId = null);
+    }
+    if (value == 'delete') {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: Colors.white,
+          title: const Text('确认删除'),
+          content: Text('确定要删除「${bill.category}」￥${bill.amount} 的记账记录吗？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('删除'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed == true) {
+        ref.read(billListProvider.notifier).remove(bill.id);
+      }
+    } else if (value == 'edit') {
+      ref.read(editingBillProvider.notifier).set(bill);
+      ref.read(navigationProvider.notifier).setTab(2);
+    }
+  }
+
   Future<void> _showBillMenu(
     BuildContext context,
     WidgetRef ref,
@@ -513,14 +680,14 @@ class _HomePageState extends ConsumerState<HomePage> {
         position.dy + 1,
       ),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-      items: [
-        const PopupMenuItem(
+      items: const [
+        PopupMenuItem(
           value: 'delete',
           height: 30,
           padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           child: Text('删除', style: TextStyle(fontSize: 14)),
         ),
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'edit',
           height: 30,
           padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -557,7 +724,6 @@ class _HomePageState extends ConsumerState<HomePage> {
         ref.read(billListProvider.notifier).remove(bill.id);
       }
     } else if (value == 'edit') {
-      // 切到记账页并传入编辑数据
       debugPrint('[HomePage][edit-menu] billId=${bill.id}, type=${bill.type}');
       ref.read(editingBillProvider.notifier).set(bill);
       ref.read(navigationProvider.notifier).setTab(2);

@@ -25,6 +25,38 @@ class _ChartPageState extends ConsumerState<ChartPage> {
     ChartPeriod.year: null,
   };
   bool _loading = true;
+  String? _categoryDrilldown;
+  _CategoryDrilldownSort _categoryDrilldownSort = _CategoryDrilldownSort.amount;
+
+  List<_CategorySlice> _categorySlicesForBill(BillItem bill) {
+    if (bill.type == 'expense' && bill.splits.isNotEmpty) {
+      return [
+        for (final split in bill.splits)
+          _CategorySlice(
+            category: split.category,
+            iconId: split.iconId,
+            amount: split.amount,
+          ),
+      ];
+    }
+    return [
+      _CategorySlice(
+        category: bill.category,
+        iconId: bill.iconId,
+        amount: bill.amount,
+      ),
+    ];
+  }
+
+  Set<String> _categoriesOfBills(List<BillItem> bills) {
+    final result = <String>{};
+    for (final bill in bills) {
+      for (final slice in _categorySlicesForBill(bill)) {
+        result.add(slice.category);
+      }
+    }
+    return result;
+  }
 
   /// 计算让 idx 居中的 scroll offset，clamp 到实际 maxScrollExtent
   double _calcPickerOffset(
@@ -61,6 +93,7 @@ class _ChartPageState extends ConsumerState<ChartPage> {
     _loadData();
   }
 
+  
   void _initScrollControllers() {
     final screenW = MediaQuery.of(context).size.width;
     final double itemW = screenW / 5;
@@ -153,16 +186,17 @@ class _ChartPageState extends ConsumerState<ChartPage> {
     // 按分类汇总上一周期数据
     final prevMap = <String, double>{};
     for (final b in prevBills.where((b) => b.type == type)) {
-      prevMap[b.category] = (prevMap[b.category] ?? 0) + b.amount;
+      for (final slice in _categorySlicesForBill(b)) {
+        prevMap[slice.category] = (prevMap[slice.category] ?? 0) + slice.amount;
+      }
     }
     if (mounted) {
       setState(() {
         _bills = bills;
         _prevPeriodByCategory = prevMap;
-        final availableCategories = bills
-            .where((bill) => bill.type == type)
-            .map((bill) => bill.category)
-            .toSet();
+        final availableCategories = _categoriesOfBills(
+          bills.where((bill) => bill.type == type).toList(),
+        );
         final expandedCategory = _expandedCategoryByPeriod[period];
         if (expandedCategory != null &&
             !availableCategories.contains(expandedCategory)) {
@@ -201,6 +235,14 @@ class _ChartPageState extends ConsumerState<ChartPage> {
         periodKey = 'y_${ref.watch(selectedYearProvider)}';
     }
 
+    // 如果有分类跳转，显示分类详情页
+    if (_categoryDrilldown != null) {
+      return Scaffold(
+        backgroundColor: AppColors.surface,
+        body: _buildCategoryDetailPage(type, period, filtered, total),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: Column(
@@ -224,6 +266,470 @@ class _ChartPageState extends ConsumerState<ChartPage> {
                       ],
                     ),
                   ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==================== 分类详情页（鲨鱼记账风格）====================
+  Widget _buildCategoryDetailPage(
+    String type,
+    ChartPeriod period,
+    List<BillItem> allFilteredBills,
+    double total,
+  ) {
+    final category = _categoryDrilldown!;
+
+    final categoryEntries = <_CategoryBillEntry>[];
+    for (final bill in allFilteredBills) {
+      if (bill.splits.isNotEmpty) {
+        for (final split in bill.splits) {
+          if (split.category == category) {
+            categoryEntries.add(_CategoryBillEntry(bill: bill, amount: split.amount));
+          }
+        }
+        continue;
+      }
+      if (bill.category == category) {
+        categoryEntries.add(_CategoryBillEntry(bill: bill, amount: bill.amount));
+      }
+    }
+
+    final categoryBills = [for (final entry in categoryEntries) entry.bill];
+    final sortedEntries = [...categoryEntries]..sort((a, b) {
+      if (_categoryDrilldownSort == _CategoryDrilldownSort.amount) {
+        final amountCompare = b.amount.compareTo(a.amount);
+        if (amountCompare != 0) return amountCompare;
+        final timeCompare = _compareBillDateDesc(b.bill, a.bill);
+        if (timeCompare != 0) return timeCompare;
+        return b.bill.id.compareTo(a.bill.id);
+      }
+      final sortCompare = _compareBillDateDesc(b.bill, a.bill);
+      if (sortCompare != 0) return sortCompare;
+      return b.bill.id.compareTo(a.bill.id);
+    });
+
+    return Column(
+      children: [
+        Container(
+          color: AppColors.primary,
+          padding: EdgeInsets.only(
+            top: MediaQuery.of(context).padding.top + 8,
+            bottom: 12,
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  IconButton(
+                    onPressed: () => setState(() {
+                      _categoryDrilldown = null;
+                      _categoryDrilldownSort = _CategoryDrilldownSort.amount;
+                    }),
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 48),
+                  ),
+                  Expanded(
+                    child: Text(
+                      category,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(width: 48),
+                ],
+              ),
+            ],
+          ),
+        ),
+        _buildPeriodTabs(period),
+        _buildPeriodSelector(period),
+        Expanded(
+          child: sortedEntries.isEmpty
+              ? const Center(child: Text('暂无数据'))
+              : Column(
+                  children: [
+                    // 折线图
+                    _buildCategoryLineChart(categoryBills, period),
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(0, 4, 0, 16),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                            child: Row(
+                              children: [
+                                const Text(
+                                  '支出排行榜',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const Spacer(),
+                                _buildDrilldownSortSegmented(),
+                              ],
+                            ),
+                          ),
+                          ..._buildDrilldownRankRows(
+                            entries: sortedEntries,
+                            categoryName: category,
+                            categoryTotal: categoryEntries.fold<double>(
+                              0,
+                              (sum, entry) => sum + entry.amount,
+                            ),
+                          ),
+                          const SizedBox(height: 80),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDrilldownSortSegmented() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.primaryLight,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      padding: const EdgeInsets.all(3),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildDrilldownSortChip(
+            label: '金额',
+            selected: _categoryDrilldownSort == _CategoryDrilldownSort.amount,
+            onTap: () => setState(() {
+              _categoryDrilldownSort = _CategoryDrilldownSort.amount;
+            }),
+          ),
+          _buildDrilldownSortChip(
+            label: '时间',
+            selected: _categoryDrilldownSort == _CategoryDrilldownSort.time,
+            onTap: () => setState(() {
+              _categoryDrilldownSort = _CategoryDrilldownSort.time;
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDrilldownSortChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(15),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: selected ? Colors.white : AppColors.textPrimary,
+          ),
+        ),
+      ),
+    );
+  }
+
+  int _compareBillDateDesc(BillItem left, BillItem right) {
+    final leftTime = _billDateTimestamp(left);
+    final rightTime = _billDateTimestamp(right);
+    return leftTime.compareTo(rightTime);
+  }
+
+  int _billDateTimestamp(BillItem bill) {
+    final date = DateTime.tryParse(bill.date);
+    if (date != null) {
+      return date.microsecondsSinceEpoch;
+    }
+    return 0;
+  }
+
+  int _calcDivisor(ChartPeriod period) {
+    switch (period) {
+      case ChartPeriod.week:
+        return 7;
+      case ChartPeriod.month:
+        final parts = ref.read(selectedChartMonthProvider).split('-');
+        return DateTime(int.parse(parts[0]), int.parse(parts[1]) + 1, 0).day;
+      case ChartPeriod.year:
+        return 12;
+    }
+  }
+
+  Widget _buildBillTile(BillItem bill) {
+    final icon = bill.iconId >= 0 && bill.iconId < iconJson.length
+        ? iconJson[bill.iconId]
+        : null;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          if (icon != null)
+            Image.asset(iconPath(icon.iconL), width: 36, height: 36)
+          else
+            const Icon(Icons.receipt, size: 36, color: AppColors.textSecondary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              bill.note.isNotEmpty ? bill.note : bill.category,
+              style: const TextStyle(fontSize: 14),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Text(
+            '-${bill.amount.toStringAsFixed(2)}',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildDrilldownRankRows({
+    required List<_CategoryBillEntry> entries,
+    required String categoryName,
+    required double categoryTotal,
+  }) {
+    final maxAmount = entries.isNotEmpty ? entries.first.amount : 1.0;
+    return [
+      for (var index = 0; index < entries.length; index++) ...[
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          child: _buildRankRow(
+            iconBoxSize: 30,
+            iconPadding: 3,
+            titleFontSize: 12,
+            percentageFontSize: 10,
+            amountFontSize: 11.5,
+            progressHeight: 4,
+            icon: _buildDrilldownIcon(entries[index].bill.iconId),
+            title: entries[index].note.trim().isEmpty
+                ? categoryName
+                : entries[index].note.trim(),
+            percentageText:
+                '${(categoryTotal > 0 ? entries[index].amount / categoryTotal * 100 : 0).toStringAsFixed(1)}%',
+            amountText: _fmtAmount(entries[index].amount),
+            ratio: maxAmount > 0 ? entries[index].amount / maxAmount : 0.0,
+            thirdLineText: _billDateLabel(entries[index].bill.date),
+          ),
+        ),
+        if (index != entries.length - 1)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            child: Divider(
+              height: 1,
+              thickness: 0.4,
+              color: Colors.black.withValues(alpha: 0.06),
+            ),
+          ),
+      ],
+    ];
+  }
+
+  Widget _buildDrilldownIcon(int iconId) {
+    if (iconId >= 0 && iconId < iconJson.length) {
+      return Image.asset(
+        iconPath(iconJson[iconId].iconL),
+        errorBuilder: (_, _, _) => const Icon(
+          Icons.category_outlined,
+          size: 16,
+          color: Colors.black38,
+        ),
+      );
+    }
+    return const Icon(
+      Icons.category_outlined,
+      size: 16,
+      color: Colors.black38,
+    );
+  }
+
+  // ==================== 分类折线图 ====================
+  Widget _buildCategoryLineChart(List<BillItem> bills, ChartPeriod period) {
+    // 构建数据点
+    final dataMap = <int, double>{};
+    int xCount;
+    String Function(int) labelFn;
+
+    // 计算总金额和平均值
+    final total = bills.fold<double>(0, (s, b) => s + b.amount);
+    int divisor;
+    switch (period) {
+      case ChartPeriod.week:
+        divisor = 7;
+      case ChartPeriod.month:
+        final parts = ref.read(selectedChartMonthProvider).split('-');
+        divisor = DateTime(int.parse(parts[0]), int.parse(parts[1]) + 1, 0).day;
+      case ChartPeriod.year:
+        divisor = 12;
+    }
+    final avg = divisor > 0 ? total / divisor : 0.0;
+
+    switch (period) {
+      case ChartPeriod.week:
+        xCount = 7;
+        final w = ref.read(selectedWeekProvider);
+        for (final b in bills) {
+          final d = DateTime.tryParse(b.date);
+          if (d == null) continue;
+          final idx = d.difference(w.startDate).inDays;
+          if (idx >= 0 && idx < 7) {
+            dataMap[idx] = (dataMap[idx] ?? 0) + b.amount;
+          }
+        }
+        labelFn = (i) {
+          final d = w.startDate.add(Duration(days: i));
+          return '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+        };
+      case ChartPeriod.month:
+        final parts = ref.read(selectedChartMonthProvider).split('-');
+        xCount = DateTime(int.parse(parts[0]), int.parse(parts[1]) + 1, 0).day;
+        for (final b in bills) {
+          final d = DateTime.tryParse(b.date);
+          if (d == null) continue;
+          dataMap[d.day - 1] = (dataMap[d.day - 1] ?? 0) + b.amount;
+        }
+        labelFn = (i) => '${i + 1}';
+      case ChartPeriod.year:
+        xCount = 12;
+        for (final b in bills) {
+          final d = DateTime.tryParse(b.date);
+          if (d == null) continue;
+          dataMap[d.month - 1] = (dataMap[d.month - 1] ?? 0) + b.amount;
+        }
+        labelFn = (i) => '${i + 1}月';
+    }
+
+    final spots = <FlSpot>[];
+    double maxY = 0;
+    for (int i = 0; i < xCount; i++) {
+      final v = dataMap[i] ?? 0;
+      spots.add(FlSpot(i.toDouble(), v));
+      if (v > maxY) maxY = v;
+    }
+    final hasData = maxY > 0;
+    final chartMaxY = hasData ? maxY * 1.15 : 100.0;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 汇总标签
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '总支出：${total.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.black87,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '平均：${avg.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Colors.black54,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          SizedBox(
+            height: 120,
+            child: LineChart(
+              LineChartData(
+                gridData: const FlGridData(show: false),
+                titlesData: FlTitlesData(
+                  leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 20,
+                      interval: xCount <= 7 ? 1 : (xCount <= 12 ? 1 : 1),
+                      getTitlesWidget: (value, meta) {
+                        final idx = value.toInt();
+                        if (idx < 0 || idx >= xCount) return const SizedBox();
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            labelFn(idx),
+                            style: const TextStyle(fontSize: 9, color: Colors.black38),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                minX: 0,
+                maxX: (xCount - 1).toDouble(),
+                minY: 0,
+                maxY: chartMaxY,
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: spots,
+                    isCurved: true,
+                    curveSmoothness: 0.3,
+                    color: AppColors.primary,
+                    barWidth: 2,
+                    isStrokeCapRound: true,
+                    dotData: FlDotData(
+                      show: hasData,
+                      getDotPainter: (spot, percent, barData, index) =>
+                          FlDotCirclePainter(
+                        radius: 3,
+                        color: Colors.white,
+                        strokeWidth: 1.5,
+                        strokeColor: AppColors.primary,
+                      ),
+                    ),
+                    belowBarData: BarAreaData(
+                      show: hasData,
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          AppColors.primary.withValues(alpha: 0.35),
+                          AppColors.primary.withValues(alpha: 0.05),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -545,7 +1051,9 @@ class _ChartPageState extends ConsumerState<ChartPage> {
         };
       case ChartPeriod.month:
         final parts = ref.read(selectedChartMonthProvider).split('-');
+        final dt = DateTime(int.parse(parts[0]), int.parse(parts[1]), 1);
         xCount = DateTime(int.parse(parts[0]), int.parse(parts[1]) + 1, 0).day;
+        // 月视图：按天聚合
         for (final b in filtered) {
           final d = DateTime.tryParse(b.date);
           if (d == null) continue;
@@ -556,7 +1064,9 @@ class _ChartPageState extends ConsumerState<ChartPage> {
         xCount = 12;
         for (final b in filtered) {
           final d = DateTime.tryParse(b.date);
-          if (d == null) continue;
+          if (d == null) {
+            continue;
+          }
           dataMap[d.month - 1] = (dataMap[d.month - 1] ?? 0) + b.amount;
         }
         labelFn = (i) => '${i + 1}月';
@@ -660,14 +1170,17 @@ class _ChartPageState extends ConsumerState<ChartPage> {
                                 interval: 1,
                                 getTitlesWidget: (value, meta) {
                                   final i = value.toInt();
-                                  if (value != i.toDouble())
+                                  if (value != i.toDouble()) {
                                     return const SizedBox.shrink();
-                                  if (i < 0 || i >= xCount)
+                                  }
+                                  if (i < 0 || i >= xCount) {
                                     return const SizedBox.shrink();
+                                  }
                                   if (period == ChartPeriod.month &&
                                       xCount > 15) {
-                                    if (i % 5 != 0 && i != xCount - 1)
+                                    if (i % 5 != 0 && i != xCount - 1) {
                                       return const SizedBox.shrink();
+                                    }
                                   }
                                   return Padding(
                                     padding: const EdgeInsets.only(top: 4),
@@ -790,14 +1303,18 @@ class _ChartPageState extends ConsumerState<ChartPage> {
     ChartPeriod period,
   ) {
     final map = <String, _RankItem>{};
-    final billsByCategory = <String, List<BillItem>>{};
+    final billsByCategory = <String, List<_CategoryBillEntry>>{};
     for (final b in filtered) {
-      final entry = map.putIfAbsent(
-        b.category,
-        () => _RankItem(category: b.category, iconId: b.iconId),
-      );
-      entry.amount += b.amount;
-      billsByCategory.putIfAbsent(b.category, () => []).add(b);
+      for (final slice in _categorySlicesForBill(b)) {
+        final entry = map.putIfAbsent(
+          slice.category,
+          () => _RankItem(category: slice.category, iconId: slice.iconId),
+        );
+        entry.amount += slice.amount;
+        billsByCategory.putIfAbsent(slice.category, () => []).add(
+              _CategoryBillEntry(bill: b, amount: slice.amount),
+            );
+      }
     }
     final list = map.values.toList()
       ..sort((a, b) => b.amount.compareTo(a.amount));
@@ -831,14 +1348,15 @@ class _ChartPageState extends ConsumerState<ChartPage> {
               ? iconJson[item.iconId]
               : null;
           final isExpanded = _expandedCategoryByPeriod[period] == item.category;
-          final childBills =
-              [...(billsByCategory[item.category] ?? const <BillItem>[])]
+          final childBills = [
+            ...(billsByCategory[item.category] ?? const <_CategoryBillEntry>[])
+          ]
                 ..sort((a, b) {
                   final amountCompare = b.amount.compareTo(a.amount);
                   if (amountCompare != 0) return amountCompare;
-                  final sortCompare = b.sortAt.compareTo(a.sortAt);
+                  final sortCompare = b.bill.sortAt.compareTo(a.bill.sortAt);
                   if (sortCompare != 0) return sortCompare;
-                  return b.date.compareTo(a.date);
+                  return b.bill.date.compareTo(a.bill.date);
                 });
           final topChildBills = childBills.take(20).toList();
           // 涨跌对比
@@ -878,9 +1396,7 @@ class _ChartPageState extends ConsumerState<ChartPage> {
                       borderRadius: BorderRadius.circular(14),
                       onTap: () {
                         setState(() {
-                          _expandedCategoryByPeriod[period] = isExpanded
-                              ? null
-                              : item.category;
+                          _categoryDrilldown = item.category;
                         });
                       },
                       child: Padding(
@@ -957,7 +1473,7 @@ class _ChartPageState extends ConsumerState<ChartPage> {
   }
 
   List<Widget> _buildChildRankRows({
-    required List<BillItem> childBills,
+    required List<_CategoryBillEntry> childBills,
     required double categoryTotal,
     required dynamic icon,
   }) {
@@ -994,7 +1510,7 @@ class _ChartPageState extends ConsumerState<ChartPage> {
           ratio: maxChildAmount > 0
               ? childBills[index].amount / maxChildAmount
               : 0.0,
-          thirdLineText: _billDateLabel(childBills[index].date),
+          thirdLineText: _billDateLabel(childBills[index].bill.date),
         ),
         if (index != childBills.length - 1)
           Padding(
@@ -1336,4 +1852,247 @@ class _RankItem {
   final int iconId;
   double amount = 0;
   _RankItem({required this.category, required this.iconId});
+}
+
+class _CategorySlice {
+  final String category;
+  final int iconId;
+  final double amount;
+
+  const _CategorySlice({
+    required this.category,
+    required this.iconId,
+    required this.amount,
+  });
+}
+
+class _CategoryBillEntry {
+  final BillItem bill;
+  final double amount;
+
+  const _CategoryBillEntry({
+    required this.bill,
+    required this.amount,
+  });
+
+  String get note => bill.note;
+}
+
+enum _CategoryDrilldownSort { amount, time }
+
+// ==================== 分类详情弹窗 ====================
+class _CategoryDrilldownSheet extends ConsumerWidget {
+  final String category;
+  final ChartPeriod period;
+  final List<BillItem> bills;
+  final VoidCallback onClose;
+
+  const _CategoryDrilldownSheet({
+    required this.category,
+    required this.period,
+    required this.bills,
+    required this.onClose,
+  });
+
+  String get _periodLabel {
+    switch (period) {
+      case ChartPeriod.week:
+        return '本周';
+      case ChartPeriod.month:
+        return '本月';
+      case ChartPeriod.year:
+        return '今年';
+    }
+  }
+
+  String get _periodShortLabel {
+    switch (period) {
+      case ChartPeriod.week:
+        return '周';
+      case ChartPeriod.month:
+        return '月';
+      case ChartPeriod.year:
+        return '年';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final total = bills.fold<double>(0, (s, b) => s + b.amount);
+    final sortedBills = [...bills]..sort((a, b) => b.date.compareTo(a.date));
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.7,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: const BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: AppColors.surfaceStrong, width: 0.5),
+              ),
+            ),
+            child: Row(
+              children: [
+                Text(
+                  category,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '$_periodLabel ${bills.length} 笔',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: onClose,
+                  icon: const Icon(Icons.close),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                _buildPeriodChip(ref, '周', ChartPeriod.week),
+                const SizedBox(width: 8),
+                _buildPeriodChip(ref, '月', ChartPeriod.month),
+                const SizedBox(width: 8),
+                _buildPeriodChip(ref, '年', ChartPeriod.year),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Flexible(
+            child: ListView.builder(
+              padding: EdgeInsets.zero,
+              itemCount: sortedBills.length,
+              itemBuilder: (context, index) {
+                final bill = sortedBills[index];
+                return _buildBillRow(bill);
+              },
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(
+              border: Border(
+                top: BorderSide(color: AppColors.surfaceStrong, width: 0.5),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  '合计',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  total.toStringAsFixed(2),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPeriodChip(WidgetRef ref, String label, ChartPeriod targetPeriod) {
+    final isSelected = period == targetPeriod;
+    return GestureDetector(
+      onTap: () {
+        final now = DateTime.now();
+        switch (targetPeriod) {
+          case ChartPeriod.week:
+            ref.read(selectedWeekProvider.notifier).set(weekInfoOf(now));
+            ref.read(chartPeriodProvider.notifier).set(ChartPeriod.week);
+          case ChartPeriod.month:
+            ref.read(selectedChartMonthProvider.notifier).set(
+                '${now.year}-${now.month.toString().padLeft(2, '0')}');
+            ref.read(chartPeriodProvider.notifier).set(ChartPeriod.month);
+          case ChartPeriod.year:
+            ref.read(selectedYearProvider.notifier).set(now.year.toString());
+            ref.read(chartPeriodProvider.notifier).set(ChartPeriod.year);
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary : AppColors.primaryLight,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(
+          '${label}视图',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: isSelected ? Colors.white : AppColors.textPrimary,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBillRow(BillItem bill) {
+    final icon = bill.iconId >= 0 && bill.iconId < iconJson.length
+        ? iconJson[bill.iconId]
+        : null;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          if (icon != null)
+            Image.asset(iconPath(icon.iconL), width: 32, height: 32)
+          else
+            const Icon(Icons.receipt, size: 32, color: AppColors.textSecondary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  bill.note.isNotEmpty ? bill.note : bill.category,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  bill.date.split(' ')[0],
+                  style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '-${bill.amount.toStringAsFixed(2)}',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColors.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

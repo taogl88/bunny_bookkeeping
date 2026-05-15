@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../theme/app_theme.dart';
 
 class BottomNavBar extends StatelessWidget {
@@ -14,7 +15,7 @@ class BottomNavBar extends StatelessWidget {
 
   static const _tabs = [
     _TabInfo(
-      label: '明细',
+      label: '账单',
       activeIcon: 'assets/images/tabbar_detail_s@3x.png',
       inactiveIcon: 'assets/images/tabbar_detail_n@3x.png',
       index: 0,
@@ -41,7 +42,6 @@ class BottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
         systemNavigationBarColor: Colors.transparent,
@@ -49,29 +49,43 @@ class BottomNavBar extends StatelessWidget {
         systemNavigationBarContrastEnforced: false,
       ),
       child: BottomAppBar(
-        height: 64,
-        padding: EdgeInsets.zero,
-        notchMargin: 6,
+        height: 76,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        notchMargin: 8,
         shape: const CircularNotchedRectangle(),
-        color: AppColors.surface,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _item(_tabs[0]),
-            _item(_tabs[1]),
-            _centerLabel(),
-            _item(_tabs[2]),
-            _item(_tabs[3]),
-          ],
+        color: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: AppColors.surfaceStrong),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x143A241B),
+                blurRadius: 24,
+                offset: Offset(0, -4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _item(_tabs[0]),
+              _item(_tabs[1]),
+              _centerLabel(),
+              _item(_tabs[2]),
+              _item(_tabs[3]),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _centerLabel() {
-    final color = currentIndex == 2
-        ? AppColors.primaryDark
-        : AppColors.textSecondary;
+    final color = currentIndex == 2 ? AppColors.primary : AppColors.textSecondary;
     return GestureDetector(
       onTap: () => onTap(2),
       behavior: HitTestBehavior.opaque,
@@ -80,8 +94,15 @@ class BottomNavBar extends StatelessWidget {
         child: Align(
           alignment: Alignment.bottomCenter,
           child: Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text('记账', style: TextStyle(fontSize: 10, color: color)),
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Text(
+              '记账',
+              style: TextStyle(
+                fontSize: 10,
+                color: color,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ),
       ),
@@ -90,7 +111,7 @@ class BottomNavBar extends StatelessWidget {
 
   Widget _item(_TabInfo tab) {
     final isSelected = currentIndex == tab.index;
-    final color = isSelected ? AppColors.primaryDark : AppColors.textSecondary;
+    final color = isSelected ? AppColors.primary : AppColors.textSecondary;
     final iconPath = isSelected ? tab.activeIcon : tab.inactiveIcon;
     return GestureDetector(
       onTap: () => onTap(tab.index),
@@ -101,27 +122,24 @@ class BottomNavBar extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Image.asset(iconPath, width: 28, height: 28),
-                // if (tab.index == 4)
-                //   Positioned(
-                //     right: -4,
-                //     top: -2,
-                //     child: Container(
-                //       width: 8,
-                //       height: 8,
-                //       decoration: const BoxDecoration(
-                //         color: AppColors.badge,
-                //         shape: BoxShape.circle,
-                //       ),
-                //     ),
-                //   ),
-              ],
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: isSelected ? AppColors.primaryLight : Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Image.asset(iconPath, width: 24, height: 24),
             ),
             const SizedBox(height: 2),
-            Text(tab.label, style: TextStyle(fontSize: 10, color: color)),
+            Text(
+              tab.label,
+              style: TextStyle(
+                fontSize: 10,
+                color: color,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
           ],
         ),
       ),
@@ -134,6 +152,7 @@ class _TabInfo {
   final String activeIcon;
   final String inactiveIcon;
   final int index;
+
   const _TabInfo({
     required this.label,
     required this.activeIcon,

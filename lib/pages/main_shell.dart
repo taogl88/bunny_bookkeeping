@@ -238,18 +238,26 @@ class _MainShellState extends ConsumerState<MainShell>
           Scaffold(
             resizeToAvoidBottomInset: false,
             body: IndexedStack(index: currentIndex, children: _pages),
-            bottomNavigationBar: BottomNavBar(
-              currentIndex: currentIndex,
-              onTap: (index) => ref.read(navigationProvider.notifier).setTab(index),
-            ),
-            floatingActionButton: SizedBox(
-              width: 52,
-              height: 52,
+            bottomNavigationBar: currentIndex == 2
+                ? null
+                : BottomNavBar(
+                    currentIndex: currentIndex,
+                    onTap: (index) => ref.read(navigationProvider.notifier).setTab(index),
+                  ),
+            floatingActionButton: currentIndex == 2
+                ? null
+                : SizedBox(
+              width: 58,
+              height: 58,
               child: FloatingActionButton(
-                onPressed: () => ref.read(navigationProvider.notifier).setTab(2),
+                onPressed: () {
+                  HapticFeedback.mediumImpact();
+                  ref.read(navigationProvider.notifier).setTab(2);
+                },
                 backgroundColor: AppColors.primary,
-                elevation: 2,
-                shape: const CircleBorder(),
+                foregroundColor: Colors.white,
+                elevation: 4,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                 child: const Icon(Icons.add, size: 32, color: Colors.white),
               ),
             ),

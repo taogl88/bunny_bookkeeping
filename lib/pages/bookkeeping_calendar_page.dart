@@ -407,8 +407,7 @@ class _BookkeepingCalendarPageState
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onLongPressStart: (details) =>
-          _showBillMenu(context, ref, details.globalPosition, bill),
+      onLongPress: () => _showBillActionsSheet(context, ref, bill),
       child: AnimatedContainer(
         duration: isMenuActive
             ? Duration.zero
@@ -498,6 +497,81 @@ class _BookkeepingCalendarPageState
           child: Text('修改', style: TextStyle(fontSize: 14)),
         ),
       ],
+    );
+    if (!mounted || !context.mounted) return;
+
+    if (_activeMenuBillId == bill.id) {
+      setState(() => _activeMenuBillId = null);
+    }
+    if (value == 'delete') {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: Colors.white,
+          title: const Text('确认删除'),
+          content: Text('确定要删除「${bill.category}」￥${bill.amount} 的记账记录吗？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('删除'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed == true) {
+        await ref.read(billListProvider.notifier).remove(bill.id);
+      }
+    } else if (value == 'edit') {
+      ref.read(editingBillProvider.notifier).set(bill);
+      ref.read(keyboardProvider.notifier).hide();
+      ref.read(navigationProvider.notifier).setTab(2);
+      if (context.mounted) Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _showBillActionsSheet(
+    BuildContext context,
+    WidgetRef ref,
+    BillItem bill,
+  ) async {
+    setState(() => _activeMenuBillId = bill.id);
+    final value = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.darkGray,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              title: const Text('修改'),
+              onTap: () => Navigator.of(ctx).pop('edit'),
+            ),
+            ListTile(
+              title: const Text('删除', style: TextStyle(color: Colors.red)),
+              onTap: () => Navigator.of(ctx).pop('delete'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
     );
     if (!mounted || !context.mounted) return;
 

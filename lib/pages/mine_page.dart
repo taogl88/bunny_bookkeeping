@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:io' show File;
 
+import 'package:enough_convert/enough_convert.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
@@ -67,7 +69,13 @@ class _MineHeader extends ConsumerWidget {
       children: [
         // 黄色背景：底部预留出一些空间，让统计卡片能优雅地坐落在其下沿
         Container(
-          color: AppColors.primary,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFE86F51), Color(0xFFF1A987)],
+            ),
+          ),
           padding: EdgeInsets.only(top: topPadding),
           child: const Padding(
             padding: EdgeInsets.fromLTRB(20, 24, 20, 64),
@@ -149,9 +157,9 @@ class _StatsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      elevation: 1,
+      elevation: 0,
       color: AppColors.surface,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(20),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 18),
         child: Row(
@@ -422,9 +430,9 @@ class _SectionCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
       child: Material(
-        elevation: 0.4,
+        elevation: 0,
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(20),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
           child: Column(
@@ -599,21 +607,43 @@ class _ImportCard extends ConsumerWidget {
 
   Future<void> _pickAndImport(BuildContext context, WidgetRef ref) async {
     try {
-      // 1. 选择文件
+      // 1. 选择文件（支持 JSON 和 CSV）
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['json'],
+        allowedExtensions: ['json', 'csv'],
         withData: true,
       );
 
       if (result == null || result.files.isEmpty) return;
 
       final file = result.files.first;
-      final jsonString = utf8.decode(file.bytes!);
+      debugPrint('Selected file: name=${file.name}, extension=${file.extension}');
+      final bytes = await _readPickedFileBytes(file);
+      final content = _decodeImportContent(bytes);
+      final extension = file.extension?.toLowerCase() ?? '';
+      final service = ImportService();
 
       // 2. 解析预览
-      final service = ImportService();
-      final preview = service.previewFromJson(jsonString);
+      ImportPreview? jsonPreview;
+      CsvImportPreview? csvPreview;
+      String? previewLabel;
+      String? recordCountLabel;
+
+      if (extension == 'csv') {
+        try {
+          csvPreview = service.previewFromCsv(content);
+          previewLabel = 'CSV 导入预览';
+          recordCountLabel = '${csvPreview.recordCount} 条记录';
+        } catch (e) {
+          debugPrint('CSV preview error: $e');
+          previewLabel = 'CSV 解析失败';
+          recordCountLabel = '文件格式错误';
+        }
+      } else {
+        jsonPreview = service.previewFromJson(content);
+        previewLabel = 'JSON 导入预览';
+        recordCountLabel = '${jsonPreview.recordCount} 条记录';
+      }
 
       if (!context.mounted) return;
 
@@ -621,17 +651,25 @@ class _ImportCard extends ConsumerWidget {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('导入预览'),
+          title: Text(previewLabel ?? '导入预览'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _previewRow('数据来源', preview.source),
-              _previewRow('导出时间', preview.exportedAt),
-              const Divider(height: 16),
-              _previewRow('账单记录', '${preview.recordCount} 条'),
-              _previewRow('支出分类', '${preview.expenseCategories} 个'),
-              _previewRow('收入分类', '${preview.incomeCategories} 个'),
+              if (jsonPreview != null) ...[
+                _previewRow('数据来源', jsonPreview.source),
+                _previewRow('导出时间', jsonPreview.exportedAt),
+                const Divider(height: 16),
+                _previewRow('账单记录', '${jsonPreview.recordCount} 条'),
+                _previewRow('支出分类', '${jsonPreview.expenseCategories} 个'),
+                _previewRow('收入分类', '${jsonPreview.incomeCategories} 个'),
+              ] else if (csvPreview != null) ...[
+                _previewRow('CSV 预览', csvPreview.headers.join(', ')),
+                const Divider(height: 16),
+                _previewRow('账单记录', recordCountLabel ?? ''),
+                _previewRow('支出记录', '${csvPreview.expenseCount} 条'),
+                _previewRow('收入记录', '${csvPreview.incomeCount} 条'),
+              ],
               const SizedBox(height: 12),
               const Text(
                 '⚠️ 导入将跳过已存在的重复记录。',
@@ -662,7 +700,22 @@ class _ImportCard extends ConsumerWidget {
       );
 
       // 5. 执行导入
-      final importResult = await service.importFromJson(jsonString);
+      ImportResult importResult;
+      if (extension == 'csv') {
+        try {
+          importResult = await service.importFromCsv(content);
+        } catch (e) {
+          debugPrint('CSV import error: $e');
+          importResult = const ImportResult(
+            totalRecords: 0,
+            insertedBills: 0,
+            skippedBills: 0,
+            importedCategories: 0,
+          );
+        }
+      } else {
+        importResult = await service.importFromJson(content);
+      }
 
       if (!context.mounted) return;
 
@@ -731,6 +784,32 @@ class _ImportCard extends ConsumerWidget {
     );
   }
 
+  static Future<List<int>> _readPickedFileBytes(PlatformFile file) async {
+    final inMemoryBytes = file.bytes;
+    if (inMemoryBytes != null && inMemoryBytes.isNotEmpty) {
+      return inMemoryBytes;
+    }
+
+    final path = file.path;
+    if (path != null && path.isNotEmpty) {
+      return File(path).readAsBytes();
+    }
+
+    throw const FormatException('无法读取所选文件内容');
+  }
+
+  static String _decodeImportContent(List<int> bytes) {
+    try {
+      return utf8.decode(bytes);
+    } on FormatException {
+      try {
+        return gbk.decode(bytes);
+      } catch (_) {
+        return latin1.decode(bytes);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return _SectionCard(
@@ -743,7 +822,7 @@ class _ImportCard extends ConsumerWidget {
             color: AppColors.primaryDark,
           ),
           title: '数据导入',
-          subtitle: '从 myapp 导出的 JSON 文件导入记账数据',
+          subtitle: '从 myapp 导出的 JSON/CSV 文件导入记账数据',
           onTap: () => _pickAndImport(context, ref),
         ),
       ],

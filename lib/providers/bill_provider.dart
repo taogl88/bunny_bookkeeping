@@ -1,8 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../db/database_helper.dart';
 import '../models/bill_item.dart';
+import '../models/bill_split.dart';
 
-/// 当前选中的年月，格式 "2025-11"
 class SelectedMonthNotifier extends Notifier<String> {
   @override
   String build() {
@@ -17,7 +18,6 @@ final selectedMonthProvider = NotifierProvider<SelectedMonthNotifier, String>(
   SelectedMonthNotifier.new,
 );
 
-/// 当月账单列表
 class BillListNotifier extends AsyncNotifier<List<BillItem>> {
   final _db = DatabaseHelper.instance;
 
@@ -27,13 +27,13 @@ class BillListNotifier extends AsyncNotifier<List<BillItem>> {
     return _db.getBillsByMonth(month);
   }
 
-  Future<void> add(BillItem bill) async {
-    await _db.insertBill(bill);
+  Future<void> add(BillItem bill, {List<BillSplitDraft>? splits}) async {
+    await _db.insertBillWithSplits(bill, splits: splits);
     ref.invalidateSelf();
   }
 
-  Future<void> updateBill(BillItem bill) async {
-    await _db.updateBill(bill);
+  Future<void> updateBill(BillItem bill, {List<BillSplitDraft>? splits}) async {
+    await _db.updateBillWithSplits(bill, splits: splits);
     ref.invalidateSelf();
   }
 
@@ -48,7 +48,6 @@ final billListProvider =
       BillListNotifier.new,
     );
 
-/// 正在编辑的账单（null 表示新建模式）
 class EditingBillNotifier extends Notifier<BillItem?> {
   @override
   BillItem? build() => null;
@@ -60,10 +59,10 @@ class EditingBillNotifier extends Notifier<BillItem?> {
 final editingBillProvider =
     NotifierProvider<EditingBillNotifier, BillItem?>(EditingBillNotifier.new);
 
-/// 当月收支汇总
 class MonthlySummary {
   final double income;
   final double expense;
+
   const MonthlySummary({required this.income, required this.expense});
 }
 
@@ -73,7 +72,6 @@ class MonthlySummaryNotifier extends AsyncNotifier<MonthlySummary> {
   @override
   Future<MonthlySummary> build() async {
     final month = ref.watch(selectedMonthProvider);
-    // 监听账单列表变化，自动刷新汇总
     ref.watch(billListProvider);
     final income = await _db.getMonthlyIncome(month);
     final expense = await _db.getMonthlyExpense(month);
@@ -85,3 +83,11 @@ final monthlySummaryProvider =
     AsyncNotifierProvider<MonthlySummaryNotifier, MonthlySummary>(
       MonthlySummaryNotifier.new,
     );
+
+final billSplitMapProvider = FutureProvider<Map<String, List<BillSplit>>>((
+  ref,
+) async {
+  final bills = await ref.watch(billListProvider.future);
+  final ids = [for (final bill in bills) bill.id];
+  return DatabaseHelper.instance.getBillSplitsByBillIds(ids);
+});

@@ -11,6 +11,12 @@ pluginManagement {
     includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
 
     repositories {
+        maven { url = uri("${System.getenv("FLUTTER_STORAGE_BASE_URL") ?: "https://storage.googleapis.com"}/download.flutter.io") }
+        maven { url = uri("https://maven.aliyun.com/repository/google") }
+        maven { url = uri("https://maven.aliyun.com/repository/central") }
+        maven { url = uri("https://maven.aliyun.com/repository/public") }
+        maven { url = uri("https://maven.aliyun.com/repository/jcenter") }
+        maven { url = uri("https://maven.aliyun.com/nexus/content/groups/public") }
         google()
         mavenCentral()
         gradlePluginPortal()
@@ -19,8 +25,22 @@ pluginManagement {
 
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
-    id("com.android.application") version "8.11.1" apply false
-    id("org.jetbrains.kotlin.android") version "2.2.20" apply false
+    id("com.android.application") version "8.7.0" apply false
+    id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+    repositories {
+        maven { url = uri("${System.getenv("FLUTTER_STORAGE_BASE_URL") ?: "https://storage.googleapis.com"}/download.flutter.io") }
+        maven { url = uri("https://maven.aliyun.com/repository/google") }
+        maven { url = uri("https://maven.aliyun.com/repository/central") }
+        maven { url = uri("https://maven.aliyun.com/repository/public") }
+        maven { url = uri("https://maven.aliyun.com/repository/jcenter") }
+        maven { url = uri("https://maven.aliyun.com/nexus/content/groups/public") }
+        google()
+        mavenCentral()
+    }
 }
 
 include(":app")

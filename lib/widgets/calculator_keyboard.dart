@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/app_theme.dart';
 import 'date_picker.dart';
 import 'note_editor.dart';
@@ -371,7 +372,10 @@ class _CalculatorKeyboardState extends State<CalculatorKeyboard>
 
   Widget _doneKey() {
     return Expanded(child: GestureDetector(
-      onTap: _onComplete,
+      onTap: () {
+        HapticFeedback.mediumImpact();
+        _onComplete();
+      },
       child: Container(
         height: 52,
         decoration: BoxDecoration(
