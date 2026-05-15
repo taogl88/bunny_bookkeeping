@@ -1071,7 +1071,6 @@ class _ImportCard extends ConsumerWidget {
           subtitle: '从 myapp 导出的 JSON/CSV 文件导入记账数据',
           onTap: () => _pickAndImport(context, ref),
         ),
-        const Divider(height: 1, indent: 56),
         _NavTile(
           leading: const Icon(
             Icons.file_upload_outlined,
@@ -1121,18 +1120,38 @@ class _ExportSheet extends ConsumerWidget {
             leading: const Icon(Icons.code, color: AppColors.primaryDark),
             title: const Text('导出为 JSON'),
             subtitle: const Text('和导入格式一致，可用于数据迁移'),
-            onTap: () => _export(context, 'json'),
+            onTap: () => _exportToDisk(context, 'json'),
           ),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.table_chart, color: AppColors.primaryDark),
             title: const Text('导出为 CSV'),
             subtitle: const Text('通用表格格式，方便其他软件打开'),
-            onTap: () => _export(context, 'csv'),
+            onTap: () => _exportToDisk(context, 'csv'),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _exportToDisk(BuildContext context, String format) async {
+    Navigator.of(context).maybePop();
+    final service = ExportService();
+    try {
+      final exported = await service.exportToFile(format);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已导出到 ${exported.path}'),
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('导出失败: $e'), backgroundColor: Colors.red),
+      );
+    }
   }
 
   Future<void> _export(BuildContext context, String format) async {

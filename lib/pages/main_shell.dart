@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/badge_provider.dart';
 import '../providers/badge_seen_provider.dart';
 import '../providers/bill_provider.dart';
+import '../providers/chart_provider.dart';
 import '../providers/keyboard_provider.dart';
 import '../providers/navigation_provider.dart';
 import '../providers/settings_provider.dart';
@@ -216,11 +217,26 @@ class _MainShellState extends ConsumerState<MainShell>
           ref.read(keyboardProvider.notifier).hide();
           return;
         }
-        // 2. 双击返回退出
+        // 2. 图表下钻 → 先退出下钻
+        final chartDrilldown = ref.read(chartDrilldownProvider);
+        if (chartDrilldown != null) {
+          ref.read(chartDrilldownProvider.notifier).close();
+          return;
+        }
+        // 3. 记账页 → 先回到来源 tab
+        if (ref.read(navigationProvider.notifier).returnFromBilling()) {
+          return;
+        }
+        // 4. 有子路由可返回 → 直接 pop
+        final rootNav = Navigator.of(context, rootNavigator: true);
+        if (rootNav.canPop()) {
+          rootNav.pop();
+          return;
+        }
+        // 5. 双击返回退出
         final now = DateTime.now();
         if (_lastBackPress != null &&
             now.difference(_lastBackPress!) < const Duration(seconds: 2)) {
-          // 允许退出
           SystemNavigator.pop();
           return;
         }
@@ -252,7 +268,7 @@ class _MainShellState extends ConsumerState<MainShell>
               child: FloatingActionButton(
                 onPressed: () {
                   HapticFeedback.mediumImpact();
-                  ref.read(navigationProvider.notifier).setTab(2);
+                  ref.read(navigationProvider.notifier).openBillingFromCurrentTab();
                 },
                 backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,

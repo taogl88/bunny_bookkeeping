@@ -524,7 +524,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       behavior: HitTestBehavior.opaque,
       onTap: () {
         ref.read(editingBillProvider.notifier).set(bill);
-        ref.read(navigationProvider.notifier).setTab(2);
+        ref.read(navigationProvider.notifier).openBillingFromCurrentTab();
       },
       onLongPress: () => _showBillActionsSheet(context, ref, bill),
       child: AnimatedContainer(
@@ -658,7 +658,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       }
     } else if (value == 'edit') {
       ref.read(editingBillProvider.notifier).set(bill);
-      ref.read(navigationProvider.notifier).setTab(2);
+      ref.read(navigationProvider.notifier).openBillingFromCurrentTab();
     }
   }
 
@@ -726,7 +726,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     } else if (value == 'edit') {
       debugPrint('[HomePage][edit-menu] billId=${bill.id}, type=${bill.type}');
       ref.read(editingBillProvider.notifier).set(bill);
-      ref.read(navigationProvider.notifier).setTab(2);
+      ref.read(navigationProvider.notifier).openBillingFromCurrentTab();
     }
   }
 }

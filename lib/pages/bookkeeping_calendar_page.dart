@@ -529,7 +529,7 @@ class _BookkeepingCalendarPageState
     } else if (value == 'edit') {
       ref.read(editingBillProvider.notifier).set(bill);
       ref.read(keyboardProvider.notifier).hide();
-      ref.read(navigationProvider.notifier).setTab(2);
+      ref.read(navigationProvider.notifier).openBillingFromCurrentTab();
       if (context.mounted) Navigator.of(context).pop();
     }
   }
@@ -604,7 +604,7 @@ class _BookkeepingCalendarPageState
     } else if (value == 'edit') {
       ref.read(editingBillProvider.notifier).set(bill);
       ref.read(keyboardProvider.notifier).hide();
-      ref.read(navigationProvider.notifier).setTab(2);
+      ref.read(navigationProvider.notifier).openBillingFromCurrentTab();
       if (context.mounted) Navigator.of(context).pop();
     }
   }

@@ -189,6 +189,7 @@ class _CalculatorKeyboardState extends State<CalculatorKeyboard>
       return;
     }
     if (amount <= 0) return;
+    SystemSound.play(SystemSoundType.click);
     widget.onComplete(amount, _note, _selectedDate);
   }
 

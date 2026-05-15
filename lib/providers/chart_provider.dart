@@ -100,3 +100,14 @@ List<String> generateYearList() {
   }
   return list;
 }
+
+class ChartDrilldownNotifier extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void open(String category) => state = category;
+  void close() => state = null;
+}
+
+final chartDrilldownProvider =
+    NotifierProvider<ChartDrilldownNotifier, String?>(ChartDrilldownNotifier.new);

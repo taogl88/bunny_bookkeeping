@@ -25,7 +25,6 @@ class _ChartPageState extends ConsumerState<ChartPage> {
     ChartPeriod.year: null,
   };
   bool _loading = true;
-  String? _categoryDrilldown;
   _CategoryDrilldownSort _categoryDrilldownSort = _CategoryDrilldownSort.amount;
 
   List<_CategorySlice> _categorySlicesForBill(BillItem bill) {
@@ -221,6 +220,7 @@ class _ChartPageState extends ConsumerState<ChartPage> {
 
     final type = ref.watch(chartTypeProvider);
     final period = ref.watch(chartPeriodProvider);
+    final categoryDrilldown = ref.watch(chartDrilldownProvider);
     final filtered = _bills.where((b) => b.type == type).toList();
     final total = filtered.fold<double>(0, (s, b) => s + b.amount);
 
@@ -236,10 +236,16 @@ class _ChartPageState extends ConsumerState<ChartPage> {
     }
 
     // 如果有分类跳转，显示分类详情页
-    if (_categoryDrilldown != null) {
+    if (categoryDrilldown != null) {
       return Scaffold(
         backgroundColor: AppColors.surface,
-        body: _buildCategoryDetailPage(type, period, filtered, total),
+        body: _buildCategoryDetailPage(
+          type,
+          period,
+          filtered,
+          total,
+          categoryDrilldown,
+        ),
       );
     }
 
@@ -278,9 +284,8 @@ class _ChartPageState extends ConsumerState<ChartPage> {
     ChartPeriod period,
     List<BillItem> allFilteredBills,
     double total,
+    String category,
   ) {
-    final category = _categoryDrilldown!;
-
     final categoryEntries = <_CategoryBillEntry>[];
     for (final bill in allFilteredBills) {
       if (bill.splits.isNotEmpty) {
@@ -323,10 +328,12 @@ class _ChartPageState extends ConsumerState<ChartPage> {
               Row(
                 children: [
                   IconButton(
-                    onPressed: () => setState(() {
-                      _categoryDrilldown = null;
-                      _categoryDrilldownSort = _CategoryDrilldownSort.amount;
-                    }),
+                    onPressed: () {
+                      setState(() {
+                        _categoryDrilldownSort = _CategoryDrilldownSort.amount;
+                      });
+                      ref.read(chartDrilldownProvider.notifier).close();
+                    },
                     icon: const Icon(Icons.arrow_back, color: Colors.white),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(minWidth: 48),
@@ -1395,9 +1402,7 @@ class _ChartPageState extends ConsumerState<ChartPage> {
                     child: InkWell(
                       borderRadius: BorderRadius.circular(14),
                       onTap: () {
-                        setState(() {
-                          _categoryDrilldown = item.category;
-                        });
+                        ref.read(chartDrilldownProvider.notifier).open(item.category);
                       },
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
