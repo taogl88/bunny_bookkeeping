@@ -12,6 +12,9 @@ import '../providers/category_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/user_stats_provider.dart';
 import '../services/import_service.dart';
+import '../services/export_service.dart';
+import '../providers/backup_settings_provider.dart';
+import '../services/backup_settings.dart';
 import '../theme/app_theme.dart';
 import '../utils/icon_helper.dart';
 import 'badge_page.dart';
@@ -37,6 +40,8 @@ class MinePage extends ConsumerWidget {
           _SmsSettingCard(),
           SizedBox(height: 12),
           _ImportCard(),
+          SizedBox(height: 12),
+          _BackupCard(),
           SizedBox(height: 12),
           _TipsCard(),
           SizedBox(height: 24),
@@ -600,6 +605,247 @@ class _SettingTile extends StatelessWidget {
 }
 
 // ==========================================================================
+// 云备份卡片
+// ==========================================================================
+class _BackupCard extends ConsumerWidget {
+  const _BackupCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settingsAsync = ref.watch(backupSettingsProvider);
+    final settingsNotifier = ref.read(backupSettingsProvider.notifier);
+    final settings = settingsAsync.value ?? const BackupSettings();
+
+    return _SectionCard(
+      title: '云备份',
+      children: [
+        _SettingTile(
+          icon: Icons.cloud_upload_outlined,
+          title: '自动备份',
+          subtitle: settings.enabled
+              ? '每天凌晨3点自动备份到腾讯云'
+              : '已关闭',
+          trailing: Switch(
+            value: settings.enabled,
+            onChanged: (v) => settingsNotifier.toggleEnabled(v),
+            activeColor: AppColors.primaryDark,
+          ),
+        ),
+        const Divider(height: 1, indent: 56),
+        _NavTile(
+          leading: const Icon(
+            Icons.settings_outlined,
+            size: 22,
+            color: AppColors.primaryDark,
+          ),
+          title: '备份设置',
+          subtitle: settings.isConfigured
+              ? 'SecretID: ${settings.secretId?.substring(0, 8)}...'
+              : '未配置',
+          onTap: () => _showBackupConfigSheet(context, ref),
+        ),
+        const Divider(height: 1, indent: 56),
+        _NavTile(
+          leading: const Icon(
+            Icons.backup_outlined,
+            size: 22,
+            color: AppColors.primaryDark,
+          ),
+          title: '立即备份',
+          subtitle: '手动触发一次备份',
+          onTap: () => _runManualBackup(context, ref),
+        ),
+      ],
+    );
+  }
+
+  void _showBackupConfigSheet(BuildContext context, WidgetRef ref) {
+    final settings = ref.read(backupSettingsProvider).value ?? const BackupSettings();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _BackupConfigSheet(initialSettings: settings),
+    );
+  }
+
+  Future<void> _runManualBackup(BuildContext context, WidgetRef ref) async {
+    final service = ref.read(manualBackupProvider);
+    final settings = ref.read(backupSettingsProvider).value ?? const BackupSettings();
+
+    if (!settings.isConfigured) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('请先配置云存储参数'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final result = await service.run();
+
+    if (!context.mounted) return;
+    Navigator.of(context).maybePop();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.success
+            ? '备份成功: ${result.fileName}'
+            : '备份失败: ${result.error}'),
+        backgroundColor: result.success ? Colors.green : Colors.red,
+      ),
+    );
+  }
+}
+
+class _BackupConfigSheet extends ConsumerStatefulWidget {
+  final dynamic initialSettings;
+
+  const _BackupConfigSheet({required this.initialSettings});
+
+  @override
+  ConsumerState<_BackupConfigSheet> createState() => _BackupConfigSheetState();
+}
+
+class _BackupConfigSheetState extends ConsumerState<_BackupConfigSheet> {
+  late TextEditingController _secretIdController;
+  late TextEditingController _secretKeyController;
+  late TextEditingController _bucketController;
+  late TextEditingController _regionController;
+  late TextEditingController _appIdController;
+  late String _frequency;
+
+  @override
+  void initState() {
+    super.initState();
+    final s = widget.initialSettings;
+    _secretIdController = TextEditingController(text: s.secretId ?? '');
+    _secretKeyController = TextEditingController(text: s.secretKey ?? '');
+    _bucketController = TextEditingController(text: s.bucket ?? '');
+    _regionController = TextEditingController(text: s.region ?? '');
+    _appIdController = TextEditingController(text: s.appId ?? '');
+    _frequency = s.frequency;
+  }
+
+  @override
+  void dispose() {
+    _secretIdController.dispose();
+    _secretKeyController.dispose();
+    _bucketController.dispose();
+    _regionController.dispose();
+    _appIdController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.all(20),
+        children: [
+          const Text(
+            '腾讯云 COS 配置',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _secretIdController,
+            decoration: const InputDecoration(
+              labelText: 'SecretId',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _secretKeyController,
+            decoration: const InputDecoration(
+              labelText: 'SecretKey',
+              border: OutlineInputBorder(),
+            ),
+            obscureText: true,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _bucketController,
+            decoration: const InputDecoration(
+              labelText: 'Bucket',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _regionController,
+            decoration: const InputDecoration(
+              labelText: 'Region (如 ap-guangzhou)',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _appIdController,
+            decoration: const InputDecoration(
+              labelText: 'AppId',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text('备份频率', style: TextStyle(fontSize: 14)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              _freqChip('每天', 'daily'),
+              _freqChip('每周', 'weekly'),
+              _freqChip('每月', 'monthly'),
+            ],
+          ),
+          const SizedBox(height: 20),
+          FilledButton(
+            onPressed: _save,
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _freqChip(String label, String value) {
+    return ChoiceChip(
+      label: Text(label),
+      selected: _frequency == value,
+      onSelected: (_) => setState(() => _frequency = value),
+    );
+  }
+
+  Future<void> _save() async {
+    await ref.read(backupSettingsProvider.notifier).updateCosConfig(
+          secretId: _secretIdController.text.trim(),
+          secretKey: _secretKeyController.text.trim(),
+          bucket: _bucketController.text.trim(),
+          region: _regionController.text.trim(),
+          appId: _appIdController.text.trim(),
+        );
+    await ref.read(backupSettingsProvider.notifier).updateFrequency(_frequency);
+    if (mounted) Navigator.of(context).maybePop();
+  }
+}
+
+// ==========================================================================
 // 数据导入卡片
 // ==========================================================================
 class _ImportCard extends ConsumerWidget {
@@ -825,7 +1071,86 @@ class _ImportCard extends ConsumerWidget {
           subtitle: '从 myapp 导出的 JSON/CSV 文件导入记账数据',
           onTap: () => _pickAndImport(context, ref),
         ),
+        const Divider(height: 1, indent: 56),
+        _NavTile(
+          leading: const Icon(
+            Icons.file_upload_outlined,
+            size: 22,
+            color: AppColors.primaryDark,
+          ),
+          title: '数据导出',
+          subtitle: '导出为 JSON/CSV 文件',
+          onTap: () => _showExportSheet(context, ref),
+        ),
       ],
     );
+  }
+
+  void _showExportSheet(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => const _ExportSheet(),
+    );
+  }
+}
+
+// ==========================================================================
+// 数据导出
+// ==========================================================================
+class _ExportSheet extends ConsumerWidget {
+  const _ExportSheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            '数据导出',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 20),
+          ListTile(
+            leading: const Icon(Icons.code, color: AppColors.primaryDark),
+            title: const Text('导出为 JSON'),
+            subtitle: const Text('和导入格式一致，可用于数据迁移'),
+            onTap: () => _export(context, 'json'),
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.table_chart, color: AppColors.primaryDark),
+            title: const Text('导出为 CSV'),
+            subtitle: const Text('通用表格格式，方便其他软件打开'),
+            onTap: () => _export(context, 'csv'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _export(BuildContext context, String format) async {
+    Navigator.of(context).maybePop();
+    final service = ExportService();
+    try {
+      final content = format == 'json'
+          ? await service.exportToJsonString()
+          : await service.exportToCsvString();
+      final fileName = 'bunny_backup_${DateTime.now().millisecondsSinceEpoch}.$format';
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已生成 $fileName，大小 ${content.length} 字节')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('导出失败: $e'), backgroundColor: Colors.red),
+      );
+    }
   }
 }

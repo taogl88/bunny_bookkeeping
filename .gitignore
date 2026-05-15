@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+adb_*.out
+adb_*.err
+package-lock.json
