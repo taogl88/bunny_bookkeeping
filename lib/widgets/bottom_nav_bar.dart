@@ -49,8 +49,8 @@ class BottomNavBar extends StatelessWidget {
         systemNavigationBarContrastEnforced: false,
       ),
       child: BottomAppBar(
-        height: 76,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        height: 68,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         notchMargin: 8,
         shape: const CircularNotchedRectangle(),
         color: Colors.transparent,
@@ -90,15 +90,15 @@ class BottomNavBar extends StatelessWidget {
       onTap: () => onTap(2),
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
-        width: 56,
+        width: 48,
         child: Align(
           alignment: Alignment.bottomCenter,
           child: Padding(
-            padding: const EdgeInsets.only(bottom: 14),
+            padding: const EdgeInsets.only(bottom: 10),
             child: Text(
               '记账',
               style: TextStyle(
-                fontSize: 10,
+                fontSize: 9,
                 color: color,
                 fontWeight: FontWeight.w700,
               ),
@@ -117,25 +117,25 @@ class BottomNavBar extends StatelessWidget {
       onTap: () => onTap(tab.index),
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
-        width: 56,
+        width: 48,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             AnimatedContainer(
               duration: const Duration(milliseconds: 180),
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
                 color: isSelected ? AppColors.primaryLight : Colors.transparent,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Image.asset(iconPath, width: 24, height: 24),
+              child: Image.asset(iconPath, width: 22, height: 22),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 1),
             Text(
               tab.label,
               style: TextStyle(
-                fontSize: 10,
+                fontSize: 9,
                 color: color,
                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
               ),

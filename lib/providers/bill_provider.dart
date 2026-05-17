@@ -12,6 +12,28 @@ class SelectedMonthNotifier extends Notifier<String> {
   }
 
   void setMonth(String yearMonth) => state = yearMonth;
+
+  void prevMonth() {
+    final parts = state.split('-');
+    final year = int.parse(parts[0]);
+    final month = int.parse(parts[1]);
+    if (month == 1) {
+      state = '${year - 1}-12';
+    } else {
+      state = '$year-${(month - 1).toString().padLeft(2, '0')}';
+    }
+  }
+
+  void nextMonth() {
+    final parts = state.split('-');
+    final year = int.parse(parts[0]);
+    final month = int.parse(parts[1]);
+    if (month == 12) {
+      state = '${year + 1}-01';
+    } else {
+      state = '$year-${(month + 1).toString().padLeft(2, '0')}';
+    }
+  }
 }
 
 final selectedMonthProvider = NotifierProvider<SelectedMonthNotifier, String>(

@@ -37,11 +37,9 @@ class MinePage extends ConsumerWidget {
           SizedBox(height: 36 + 12),
           _AchievementCard(),
           SizedBox(height: 12),
-          _SmsSettingCard(),
+          _SettingsCard(),
           SizedBox(height: 12),
           _ImportCard(),
-          SizedBox(height: 12),
-          _BackupCard(),
           SizedBox(height: 12),
           _TipsCard(),
           SizedBox(height: 24),
@@ -285,46 +283,194 @@ class _AchievementCard extends StatelessWidget {
 }
 
 // ==========================================================================
-// 短信自动记账开关卡片
+// 设置入口卡片
 // ==========================================================================
-class _SmsSettingCard extends ConsumerWidget {
-  const _SmsSettingCard();
+class _SettingsCard extends StatelessWidget {
+  const _SettingsCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return _SectionCard(
+      title: '设置',
+      children: [
+        _SettingTile(
+          icon: Icons.settings_outlined,
+          title: '设置',
+          subtitle: '短信自动记账、隐藏金额等',
+          trailing: const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const _SettingsPage()),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+// ==========================================================================
+// 设置二级页面
+// ==========================================================================
+class _SettingsPage extends ConsumerWidget {
+  const _SettingsPage();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final enabledAsync = ref.watch(smsAutoBookkeepingEnabledProvider);
     final enabled = enabledAsync.value ?? true;
     final loading = enabledAsync.isLoading;
+    final amountHidden = ref.watch(amountHiddenProvider).value ?? false;
+    final backupAsync = ref.watch(backupSettingsProvider);
+    final backupSettings = backupAsync.value ?? const BackupSettings();
 
-    return _SectionCard(
-      title: '设置',
-      children: [
-        _SettingTile(
-          icon: Icons.sms_outlined,
-          title: '短信自动记账',
-          subtitle: '自动识别银行/支付短信生成账单（仅 Android）',
-          trailing: Switch.adaptive(
-            value: enabled,
-            activeThumbColor: AppColors.primaryDark,
-            onChanged: loading
-                ? null
-                : (v) {
-                    ref
-                        .read(smsAutoBookkeepingEnabledProvider.notifier)
-                        .setEnabled(v);
+    return Scaffold(
+      backgroundColor: AppColors.backgroundGray,
+      appBar: AppBar(
+        backgroundColor: AppColors.surface,
+        foregroundColor: AppColors.textPrimary,
+        title: const Text('设置'),
+        elevation: 0,
+      ),
+      body: ListView(
+        children: [
+          const SizedBox(height: 12),
+          _SectionCard(
+            title: '记账设置',
+            children: [
+              _SettingTile(
+                icon: Icons.sms_outlined,
+                title: '短信自动记账',
+                subtitle: '自动识别银行/支付短信生成账单（仅 Android）',
+                trailing: Switch.adaptive(
+                  value: enabled,
+                  activeThumbColor: AppColors.primaryDark,
+                  onChanged: loading
+                      ? null
+                      : (v) {
+                          ref
+                              .read(smsAutoBookkeepingEnabledProvider.notifier)
+                              .setEnabled(v);
+                          ScaffoldMessenger.of(context).clearSnackBars();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              duration: const Duration(milliseconds: 1500),
+                              behavior: SnackBarBehavior.floating,
+                              backgroundColor: AppColors.textPrimary,
+                              content: Text(v ? '已开启短信自动记账' : '已关闭短信自动记账'),
+                            ),
+                          );
+                        },
+                ),
+              ),
+              const Divider(height: 1),
+              _SettingTile(
+                icon: Icons.visibility_off_outlined,
+                title: '隐藏金额',
+                subtitle: '首页收入支出显示为 ****',
+                trailing: Switch.adaptive(
+                  value: amountHidden,
+                  activeThumbColor: AppColors.primaryDark,
+                  onChanged: (v) {
+                    ref.read(amountHiddenProvider.notifier).toggle();
                     ScaffoldMessenger.of(context).clearSnackBars();
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         duration: const Duration(milliseconds: 1500),
                         behavior: SnackBarBehavior.floating,
                         backgroundColor: AppColors.textPrimary,
-                        content: Text(v ? '已开启短信自动记账' : '已关闭短信自动记账'),
+                        content: Text(v ? '已隐藏金额' : '已显示金额'),
                       ),
                     );
                   },
+                ),
+              ),
+            ],
           ),
+          const SizedBox(height: 12),
+          _SectionCard(
+            title: '云备份',
+            children: [
+              _SettingTile(
+                icon: Icons.cloud_upload_outlined,
+                title: '自动备份',
+                subtitle: backupSettings.enabled
+                    ? '每天凌晨3点自动备份到腾讯云'
+                    : '已关闭',
+                trailing: Switch(
+                  value: backupSettings.enabled,
+                  onChanged: (v) =>
+                      ref.read(backupSettingsProvider.notifier).toggleEnabled(v),
+                  activeColor: AppColors.primaryDark,
+                ),
+              ),
+              const Divider(height: 1),
+              _SettingTile(
+                icon: Icons.settings_outlined,
+                title: '备份设置',
+                subtitle: backupSettings.isConfigured
+                    ? 'SecretID: ${backupSettings.secretId?.substring(0, 8)}...'
+                    : '未配置',
+                trailing: const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+                onTap: () => _showBackupConfigSheet(context, ref),
+              ),
+              const Divider(height: 1),
+              _SettingTile(
+                icon: Icons.backup_outlined,
+                title: '立即备份',
+                subtitle: '手动触发一次备份',
+                trailing: const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+                onTap: () => _runManualBackup(context, ref),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showBackupConfigSheet(BuildContext context, WidgetRef ref) {
+    final settings = ref.read(backupSettingsProvider).value ?? const BackupSettings();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _BackupConfigSheet(initialSettings: settings),
+    );
+  }
+
+  Future<void> _runManualBackup(BuildContext context, WidgetRef ref) async {
+    final service = ref.read(manualBackupProvider);
+    final settings = ref.read(backupSettingsProvider).value ?? const BackupSettings();
+
+    if (!settings.isConfigured) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('请先配置云存储参数'),
+          backgroundColor: Colors.red,
         ),
-      ],
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final result = await service.run();
+
+    if (!context.mounted) return;
+    Navigator.of(context).maybePop();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.success
+            ? '备份成功: ${result.fileName}'
+            : '备份失败: ${result.error}'),
+        backgroundColor: result.success ? Colors.green : Colors.red,
+      ),
     );
   }
 }
@@ -546,59 +692,65 @@ class _SettingTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.trailing,
+    this.onTap,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
   final Widget trailing;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: AppColors.primaryLight,
-              borderRadius: BorderRadius.circular(8),
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppColors.primaryLight,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, size: 20, color: AppColors.primaryDark),
             ),
-            alignment: Alignment.center,
-            child: Icon(icon, size: 20, color: AppColors.primaryDark),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textSecondary,
-                    height: 1.4,
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.textSecondary,
+                      height: 1.4,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          trailing,
-        ],
+            const SizedBox(width: 8),
+            trailing,
+          ],
+        ),
       ),
     );
   }

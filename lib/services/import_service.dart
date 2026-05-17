@@ -247,6 +247,32 @@ class ImportService {
         .map((b) => '${b.date}_${b.amount}_${b.category}')
         .toSet();
 
+    // 创建不存在的分类
+    int importedCategories = 0;
+    final usedIconsByInEx = <int, Set<int>>{
+      0: existingCategories.where((c) => c.inEx == 0).map((c) => c.iconId).toSet(),
+      1: existingCategories.where((c) => c.inEx == 1).map((c) => c.iconId).toSet(),
+    };
+    for (final record in records) {
+      final inEx = record.type == 'income' ? 1 : 0;
+      final key = '${inEx}_${record.category}';
+      if (!categoryIconByKey.containsKey(key)) {
+        final iconId = _allocateIconId(
+          inEx: inEx,
+          preferredIconId: null,
+          usedIconsByInEx: usedIconsByInEx,
+        );
+        await _db.insertCategory(
+          inEx: inEx,
+          name: record.category,
+          iconId: iconId,
+          isCustom: true,
+        );
+        importedCategories++;
+        categoryIconByKey[key] = iconId;
+      }
+    }
+
     final now = DateTime.now().toIso8601String();
 
     for (final record in records) {
