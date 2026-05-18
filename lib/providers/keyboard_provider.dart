@@ -6,6 +6,7 @@ class KeyboardState {
   final double height;
   final String categoryName;
   final String categoryIconPath;
+  final int? iconId;
   final double? initialAmount;
   final String? initialNote;
   final DateTime? initialDate;
@@ -16,6 +17,7 @@ class KeyboardState {
     this.height = 0,
     this.categoryName = '',
     this.categoryIconPath = '',
+    this.iconId,
     this.initialAmount,
     this.initialNote,
     this.initialDate,
@@ -27,6 +29,7 @@ class KeyboardState {
     double? height,
     String? categoryName,
     String? categoryIconPath,
+    int? iconId,
     double? initialAmount,
     String? initialNote,
     DateTime? initialDate,
@@ -37,6 +40,7 @@ class KeyboardState {
       height: height ?? this.height,
       categoryName: categoryName ?? this.categoryName,
       categoryIconPath: categoryIconPath ?? this.categoryIconPath,
+      iconId: iconId ?? this.iconId,
       initialAmount: initialAmount ?? this.initialAmount,
       initialNote: initialNote ?? this.initialNote,
       initialDate: initialDate ?? this.initialDate,
@@ -52,6 +56,7 @@ class KeyboardNotifier extends Notifier<KeyboardState> {
   void show({
     required String categoryName,
     required String categoryIconPath,
+    int? iconId,
     double? initialAmount,
     String? initialNote,
     DateTime? initialDate,
@@ -61,6 +66,7 @@ class KeyboardNotifier extends Notifier<KeyboardState> {
       visible: true,
       categoryName: categoryName,
       categoryIconPath: categoryIconPath,
+      iconId: iconId,
       initialAmount: initialAmount,
       initialNote: initialNote,
       initialDate: initialDate,
@@ -74,11 +80,13 @@ class KeyboardNotifier extends Notifier<KeyboardState> {
   void updateCategory({
     required String categoryName,
     required String categoryIconPath,
+    int? iconId,
     required void Function(double, String, DateTime) onComplete,
   }) {
     state = state.copyWith(
       categoryName: categoryName,
       categoryIconPath: categoryIconPath,
+      iconId: iconId,
       onComplete: onComplete,
     );
   }

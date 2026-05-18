@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -27,7 +29,9 @@ class _HomePageState extends ConsumerState<HomePage> {
   bool _isLoadingMonth = false;
   int? _pendingMonthDirection;
   double _dragDistance = 0;
-  static const double _threshold = 72;
+  DateTime? _dragStartTime;
+  static const double _threshold = 18;
+  static const Duration _minHoldDuration = Duration(seconds: 1);
 
   String _nextMonth(String ym) {
     final p = ym.split('-');
@@ -46,8 +50,17 @@ class _HomePageState extends ConsumerState<HomePage> {
   Future<void> _switchMonth(bool isNext) async {
     final current = ref.read(selectedMonthProvider);
     final target = isNext ? _nextMonth(current) : _prevMonth(current);
+    await _refreshData(target);
+  }
+
+  Future<void> _refreshData([String? targetMonth]) async {
     setState(() => _isLoadingMonth = true);
-    ref.read(selectedMonthProvider.notifier).setMonth(target);
+    _dragStartTime = null;
+    if (targetMonth != null) {
+      ref.read(selectedMonthProvider.notifier).setMonth(targetMonth);
+    } else {
+      ref.invalidate(billListProvider);
+    }
     await Future.delayed(const Duration(milliseconds: 350));
     if (!mounted) return;
     setState(() {
@@ -76,7 +89,6 @@ class _HomePageState extends ConsumerState<HomePage> {
       child: Column(
         children: [
           _buildHeader(context, ref, year, mon, summaryAsync),
-          _buildQuickActions(context),
           Expanded(child: _buildTransactionList(billsAsync)),
         ],
       ),
@@ -95,7 +107,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     final amountHidden = ref.watch(amountHiddenProvider).value ?? false;
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+      margin: const EdgeInsets.fromLTRB(14, 6, 14, 0),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
         gradient: const LinearGradient(
@@ -114,7 +126,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+          padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
           child: Column(
             children: [
               SizedBox(
@@ -325,43 +337,29 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  Widget _buildQuickActions(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.surfaceStrong),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          _quickActionItem('assets/images/账单.png', '账单', () => _openBillStatement(context)),
-          _quickActionItem('assets/images/预算.png', '预算', () => _openBudgetManager(context)),
-          _quickActionItem('assets/images/资产管家.png', '资产', () => _openAssetPage(context)),
-        ],
-      ),
-    );
-  }
-
-  Widget _quickActionItem(String iconPath, String label, VoidCallback onTap) {
-    return GestureDetector(
+  Widget _quickActionItem(String iconPath, String label, VoidCallback onTap, {bool expanded = false}) {
+    final content = GestureDetector(
       onTap: onTap,
-      child: Column(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(12)),
-            alignment: Alignment.center,
-            child: Image.asset(iconPath, width: 20, height: 20),
-          ),
-          const SizedBox(height: 8),
-          Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
-        ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.primaryLight.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Image.asset(iconPath, width: 18, height: 18),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 13, color: AppColors.textPrimary, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
       ),
     );
+    return expanded ? Expanded(child: content) : content;
   }
 
   Widget _buildTransactionList(AsyncValue<List<BillItem>> billsAsync) {
@@ -383,125 +381,166 @@ class _HomePageState extends ConsumerState<HomePage> {
         }
         final days = grouped.keys.toList();
 
-        return Container(
-          margin: const EdgeInsets.fromLTRB(14, 0, 14, 0),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: AppColors.surfaceStrong),
-          ),
-          child: days.isEmpty ? _buildEmptyWithScroll() : _buildBillsListView(grouped, days),
-        );
+        return _buildBillsListViewWithOverscroll(grouped, days);
       },
     );
   }
 
   Widget _buildEmptyWithScroll() {
+    return Center(
+      child: Text(
+        '暂无数据',
+        style: TextStyle(
+          fontSize: 14,
+          color: AppColors.textSecondary,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDaySection(String day, List<BillItem> items) {
+    final dayExpense = items.where((b) => b.type == 'expense').fold<double>(0, (s, b) => s + b.amount);
+    final dayIncome = items.where((b) => b.type == 'income').fold<double>(0, (s, b) => s + b.amount);
+
     return Column(
       children: [
-        _buildEdgeMonthSwitchZone(isTop: true),
-        const Expanded(
-          child: Center(
-            child: Text(
-              '暂无数据',
-              style: TextStyle(
-                fontSize: 14,
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(_formatDayWithWeekday(day), style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+              Row(children: [
+                if (dayIncome > 0) Text('收入：${formatAmount(dayIncome)}', style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+                if (dayExpense > 0) Text('支出：${formatAmount(dayExpense)}', style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+              ]),
+            ]),
         ),
-        _buildEdgeMonthSwitchZone(isTop: false),
+        ...items.map((bill) => _billTile(bill)),
+        const SizedBox(height: 8),
       ],
     );
   }
 
-  Widget _buildBillsListView(Map<String, List<BillItem>> grouped, List<String> days) {
-    return ListView.builder(
-      padding: EdgeInsets.zero,
-      itemCount: days.length + 2,
-      itemBuilder: (context, index) {
-        if (index == 0) return _buildEdgeMonthSwitchZone(isTop: true);
-        if (index == days.length + 1) return _buildEdgeMonthSwitchZone(isTop: false);
+  Widget _buildBillsListViewWithOverscroll(Map<String, List<BillItem>> grouped, List<String> days) {
+    Timer? holdTimer;
 
-        final day = days[index - 1];
-        final items = grouped[day]!;
-        final dayExpense = items.where((b) => b.type == 'expense').fold<double>(0, (s, b) => s + b.amount);
-        final dayIncome = items.where((b) => b.type == 'income').fold<double>(0, (s, b) => s + b.amount);
+    void reset() {
+      holdTimer?.cancel();
+      _dragStartTime = null;
+      _dragDistance = 0;
+      _pendingMonthDirection = null;
+    }
 
-        return Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(_formatDayWithWeekday(day), style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-                  Row(children: [
-                    if (dayIncome > 0) Text('收入：${formatAmount(dayIncome)}', style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-                    if (dayExpense > 0) Text('支出：${formatAmount(dayExpense)}', style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-                  ]),
-                ],
-              ),
-            ),
-            ...items.map((bill) => _billTile(bill)),
-            const SizedBox(height: 8),
-            if (index <= days.length - 1)
-              const Divider(height: 1, color: Color(0x0F4A3429), indent: 16, endIndent: 16),
-            if (index == days.length) const SizedBox(height: 16),
-          ],
-        );
+    return Listener(
+      onPointerDown: (_) {
+        _dragStartTime = DateTime.now();
+        _dragDistance = 0;
+        _pendingMonthDirection = null;
+
+        holdTimer?.cancel();
+        holdTimer = Timer(_minHoldDuration, () {});
       },
+      onPointerMove: (event) {
+        if (_isLoadingMonth) return;
+        if (_dragStartTime == null) return;
+
+        final elapsed = DateTime.now().difference(_dragStartTime!);
+        if (elapsed < _minHoldDuration) return;
+
+        final dy = event.delta.dy;
+        setState(() {
+          _dragDistance += dy.abs();
+          if (dy > 0) {
+            _pendingMonthDirection = 1;
+          } else if (dy < 0) {
+            _pendingMonthDirection = -1;
+          }
+        });
+      },
+      onPointerUp: (_) {
+        holdTimer?.cancel();
+        if (_dragStartTime != null && _pendingMonthDirection != null && _dragDistance >= _threshold) {
+          _switchMonth(_pendingMonthDirection == 1);
+        }
+        reset();
+      },
+      child: Column(
+        children: [
+          Container(
+            margin: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+              border: Border.all(color: AppColors.surfaceStrong),
+            ),
+            child: Row(
+              children: [
+                Expanded(child: _quickActionItem('assets/images/账单.png', '账单', () => _openBillStatement(context))),
+                const SizedBox(width: 8),
+                Expanded(child: _quickActionItem('assets/images/预算.png', '预算', () => _openBudgetManager(context))),
+                const SizedBox(width: 8),
+                Expanded(child: _quickActionItem('assets/images/资产管家.png', '资产', () => _openAssetPage(context))),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(22)),
+                border: Border.all(color: AppColors.surfaceStrong),
+              ),
+              child: days.isEmpty
+                  ? _buildEmptyWithScroll()
+                  : ListView.builder(
+                      physics: const BouncingScrollPhysics(),
+                      padding: EdgeInsets.zero,
+                      itemCount: days.length,
+                      itemBuilder: (context, index) {
+                        if (index == 0) {
+                          return _buildMonthSwitchHint();
+                        }
+                        final day = days[index];
+                        final items = grouped[day]!;
+                        return Column(
+                          children: [
+                            if (index > 9)
+                              const Divider(height: 1, color: Color(0x0F4A3429), indent: 16, endIndent: 16),
+                            _buildDaySection(day, items),
+                          ],
+                        );
+                      },
+                    ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildEdgeMonthSwitchZone({required bool isTop}) {
-    final hasActiveDrag = _pendingMonthDirection != null && _dragDistance > 0;
+  Widget _buildMonthSwitchHint() {
     final showSpinner = _isLoadingMonth;
-    final showZone = showSpinner || hasActiveDrag;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onVerticalDragStart: (_) {
-        setState(() {
-          _pendingMonthDirection = null;
-          _dragDistance = 0;
-        });
-      },
-      onVerticalDragUpdate: (details) {
-        if (_isLoadingMonth) return;
-        final direction = isTop
-            ? (details.delta.dy > 0 ? 1 : null)
-            : (details.delta.dy < 0 ? -1 : null);
-        setState(() {
-          _pendingMonthDirection = direction;
-          _dragDistance += details.delta.dy.abs();
-        });
-      },
-      onVerticalDragEnd: (_) {
-        final direction = _pendingMonthDirection;
-        final enough = _dragDistance >= _threshold;
-        setState(() {
-          _pendingMonthDirection = null;
-          _dragDistance = 0;
-        });
-        if (direction != null && enough) {
-          _switchMonth(direction == 1);
-        }
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        curve: Curves.easeOut,
-        height: showZone ? 40 : 0,
-        child: Center(
-          child: showSpinner
-              ? const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const SizedBox.shrink(),
-        ),
+    final showHint = _pendingMonthDirection != null && _dragDistance > 0;
+    if (!showSpinner && !showHint) {
+      return const SizedBox.shrink();
+    }
+    return SizedBox(
+      height: 48,
+      child: Center(
+        child: showSpinner
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Text(
+                _pendingMonthDirection == 1 ? '松手展示下个月' : '松手展示上个月',
+                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
       ),
     );
   }

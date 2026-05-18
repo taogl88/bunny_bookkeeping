@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../db/database_helper.dart';
 import '../theme/app_theme.dart';
 import 'date_picker.dart';
 import 'note_editor.dart';
@@ -10,6 +11,7 @@ class CalculatorKeyboard extends StatefulWidget {
     required this.onComplete,
     required this.categoryName,
     required this.categoryIconPath,
+    this.iconId,
     this.initialAmount,
     this.initialNote,
     this.initialDate,
@@ -19,6 +21,7 @@ class CalculatorKeyboard extends StatefulWidget {
   final void Function(double amount, String note, DateTime date) onComplete;
   final String categoryName;
   final String categoryIconPath;
+  final int? iconId;
   final double? initialAmount;
   final String? initialNote;
   final DateTime? initialDate;
@@ -202,6 +205,7 @@ class _CalculatorKeyboardState extends State<CalculatorKeyboard>
   }
 
   Future<void> _editNote() async {
+    final suggestions = await DatabaseHelper.instance.getNoteSuggestions(iconId: widget.iconId);
     final result = await showGeneralDialog<String>(
       context: context,
       barrierLabel: 'NoteEditor',
@@ -214,6 +218,7 @@ class _CalculatorKeyboardState extends State<CalculatorKeyboard>
         categoryName: widget.categoryName,
         categoryIconPath: widget.categoryIconPath,
         bottomSafeArea: _bottomSafeArea,
+        noteSuggestions: suggestions,
         onChanged: (value) {
           if (!mounted) {
             return;

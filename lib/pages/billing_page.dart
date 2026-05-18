@@ -146,6 +146,7 @@ class _BillingPageState extends ConsumerState<BillingPage>
       ref.read(keyboardProvider.notifier).updateCategory(
             categoryName: label,
             categoryIconPath: iconPath(icon.iconS),
+            iconId: categories.first.iconId,
             onComplete: callback,
           );
       return;
@@ -154,6 +155,7 @@ class _BillingPageState extends ConsumerState<BillingPage>
     ref.read(keyboardProvider.notifier).show(
           categoryName: label,
           categoryIconPath: iconPath(icon.iconS),
+          iconId: categories.first.iconId,
           initialAmount: editing != null
               ? _editingSharedAmount(editing)
               : _expenseDraftAmount,
@@ -177,6 +179,7 @@ class _BillingPageState extends ConsumerState<BillingPage>
     ref.read(keyboardProvider.notifier).show(
           categoryName: cat.name,
           categoryIconPath: iconPath(icon.iconS),
+          iconId: cat.iconId,
           initialAmount: editing?.amount,
           initialNote: editing?.note,
           initialDate: editing != null ? _billDateToDateTime(editing) : null,

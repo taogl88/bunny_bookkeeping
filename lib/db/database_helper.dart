@@ -490,6 +490,42 @@ class DatabaseHelper {
     return result;
   }
 
+  Future<List<String>> getNoteSuggestions({int? iconId}) async {
+    final db = await database;
+    String sql;
+    List<Object?> args;
+
+    if (iconId != null) {
+      sql = '''
+        SELECT b.note, COUNT(*) AS cnt
+        FROM bills b
+        INNER JOIN bill_splits s ON b.id = s.bill_id
+        WHERE b.note IS NOT NULL AND b.note != '' AND s.icon_id = ?
+        GROUP BY b.note
+        ORDER BY cnt DESC
+        LIMIT 20
+      ''';
+      args = [iconId];
+    } else {
+      sql = '''
+        SELECT b.note, COUNT(*) AS cnt
+        FROM bills b
+        WHERE b.note IS NOT NULL AND b.note != ''
+        GROUP BY b.note
+        ORDER BY cnt DESC
+        LIMIT 20
+      ''';
+      args = [];
+    }
+
+    final rows = await db.rawQuery(sql, args);
+    return [
+      for (final row in rows)
+        if (row['note'] != null && (row['note'] as String).isNotEmpty)
+          row['note'] as String,
+    ];
+  }
+
   Future<Map<String, List<BillSplit>>> getBillSplitsByBillIds(
     List<String> billIds,
   ) async {

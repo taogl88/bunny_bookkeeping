@@ -12,6 +12,7 @@ class NoteEditor extends StatefulWidget {
     required this.categoryIconPath,
     required this.bottomSafeArea,
     required this.onChanged,
+    this.noteSuggestions = const [],
   });
 
   final String initialNote;
@@ -20,6 +21,7 @@ class NoteEditor extends StatefulWidget {
   final String categoryIconPath;
   final double bottomSafeArea;
   final ValueChanged<String> onChanged;
+  final List<String> noteSuggestions;
 
   @override
   State<NoteEditor> createState() => _NoteEditorState();
@@ -129,11 +131,25 @@ class _NoteEditorState extends State<NoteEditor> with WidgetsBindingObserver {
                                   height: 28,
                                 ),
                                 const Spacer(),
-                                Text(
-                                  widget.displayText,
-                                  style: const TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.bold,
+                                GestureDetector(
+                                  onTap: () {
+                                    _focusNode.unfocus();
+                                    _closeWithCurrentNote(reason: 'done-tap');
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Text(
+                                      '完成',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ],
@@ -188,7 +204,35 @@ class _NoteEditorState extends State<NoteEditor> with WidgetsBindingObserver {
                               ],
                             ),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 4),
+                          if (widget.noteSuggestions.isNotEmpty)
+                            Container(
+                              margin: const EdgeInsets.only(left: 12, right: 12, bottom: 8),
+                              child: Wrap(
+                                alignment: WrapAlignment.start,
+                                spacing: 6,
+                                runSpacing: 4,
+                                children: widget.noteSuggestions.map((note) {
+                                  return GestureDetector(
+                                    onTap: () {
+                                      _controller.text = note;
+                                      _handleNoteChanged(note);
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF0F0F0),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        note,
+                                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ),
                         ],
                       ),
                     ),
