@@ -499,16 +499,16 @@ class _HomePageState extends ConsumerState<HomePage> {
                   : ListView.builder(
                       physics: const BouncingScrollPhysics(),
                       padding: EdgeInsets.zero,
-                      itemCount: days.length,
+                      itemCount: days.length + 1,
                       itemBuilder: (context, index) {
                         if (index == 0) {
                           return _buildMonthSwitchHint();
                         }
-                        final day = days[index];
+                        final day = days[index - 1];
                         final items = grouped[day]!;
                         return Column(
                           children: [
-                            if (index > 9)
+                            if (index > 1)
                               const Divider(height: 1, color: Color(0x0F4A3429), indent: 16, endIndent: 16),
                             _buildDaySection(day, items),
                           ],
